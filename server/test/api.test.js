@@ -706,11 +706,20 @@ test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async (
   const siteHtml = await site.text();
   assert.ok(siteHtml.includes('Dein ganzer Betrieb'), 'Startseite = Marketing-Website');
   assert.ok(siteHtml.includes('Datenschutzerklärung'), 'Consent-Text vorhanden');
-  // Rechtsseiten
-  for (const p of ['/impressum', '/datenschutz']) {
+  // Unterseiten + Rechtsseiten
+  for (const [p, marker] of [
+    ['/funktionen', 'Fünf Module'],
+    ['/preise', 'Leistungsvergleich'],
+    ['/faq', 'Fragen &amp; Antworten'],
+    ['/impressum', '§ 5 DDG'],
+    ['/datenschutz', 'Art. 15'],
+  ]) {
     const lr = await fetch(BASE + p);
     assert.equal(lr.status, 200, p);
+    assert.ok((await lr.text()).includes(marker), p + ' Inhalt');
   }
+  const css = await fetch(BASE + '/site.css');
+  assert.equal(css.status, 200, 'site.css');
   // Die PWA liegt unter /app
   const r = await fetch(BASE + '/app');
   assert.equal(r.status, 200);
