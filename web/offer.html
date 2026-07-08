@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Angebot ansehen &amp; annehmen</title>
+<meta name="theme-color" content="#1a3a5c">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #eef1f5; color: #223; min-height: 100vh; padding: 12px; }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(20,40,70,.10);
+          padding: 20px; margin-bottom: 14px; }
+  .firm { font-size: 13px; font-weight: 700; color: #1a3a5c; text-transform: uppercase;
+          letter-spacing: .6px; margin-bottom: 4px; }
+  h1 { font-size: 21px; color: #16324e; margin-bottom: 2px; }
+  .meta { color: #678; font-size: 13px; margin-top: 4px; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 14px; font-size: 12px;
+           font-weight: 700; margin-top: 10px; }
+  .badge.open { background: #fff5df; color: #8a6d1a; }
+  .badge.accepted { background: #dff5e7; color: #1e8449; }
+  .badge.declined { background: #fdecea; color: #c0392b; }
+  .badge.expired { background: #eef1f5; color: #667; }
+  .desc { font-size: 14px; line-height: 1.55; white-space: pre-wrap; color: #345; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: #789; font-weight: 600; font-size: 11px; text-transform: uppercase;
+       letter-spacing: .4px; padding: 6px 4px; border-bottom: 2px solid #e4e9ef; }
+  td { padding: 8px 4px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
+  td.r, th.r { text-align: right; white-space: nowrap; }
+  tr.head td { background: #f4f7fa; font-weight: 700; color: #1a3a5c; }
+  .totals { margin-top: 10px; margin-left: auto; max-width: 280px; font-size: 14px; }
+  .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .gross { font-size: 18px; font-weight: 800; color: #1e8449; border-top: 2px solid #dfe6ee;
+                   padding-top: 8px; margin-top: 4px; }
+  .terms { font-size: 12px; color: #789; white-space: pre-wrap; }
+  label { display: block; font-size: 12px; font-weight: 700; color: #456; margin: 12px 0 4px; }
+  input, textarea { width: 100%; padding: 11px; border: 1px solid #cdd6df; border-radius: 9px;
+                    font-size: 15px; font-family: inherit; }
+  #sigWrap { position: relative; border: 2px dashed #b8c4d0; border-radius: 10px; background: #fbfcfe; }
+  #sig { width: 100%; height: 160px; display: block; touch-action: none; border-radius: 8px; }
+  #sigHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+             color: #a5b3c2; font-size: 14px; pointer-events: none; }
+  #sigClear { position: absolute; top: 6px; right: 6px; background: #eef1f5; border: none;
+              border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer; color: #456; }
+  .btnrow { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  button.main { flex: 2; min-width: 180px; padding: 15px; border: none; border-radius: 11px;
+                background: #1e8449; color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
+  button.main:disabled { background: #b5c9bc; cursor: default; }
+  button.decline { flex: 1; min-width: 120px; padding: 15px; border: none; border-radius: 11px;
+                   background: #f2e3e1; color: #c0392b; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .legal { font-size: 11px; color: #92a0af; line-height: 1.5; margin-top: 12px; }
+  .err { color: #c0392b; font-size: 13px; margin-top: 10px; min-height: 16px; font-weight: 600; }
+  .done { text-align: center; padding: 28px 10px; }
+  .done .big { font-size: 46px; }
+  .done h2 { color: #16324e; margin: 10px 0 6px; }
+  .done p { color: #567; font-size: 14px; line-height: 1.5; }
+  .center { text-align: center; color: #789; padding: 40px 10px; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="center">⏳ Angebot wird geladen …</div></div>
+<script>
+(function () {
+  'use strict';
+  var token = (location.hash || '').replace(/^#/, '');
+  var app = document.getElementById('app');
+  var data = null;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function eur(n) {
+    return (Number(n) || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+  }
+  function dt(s) { return s ? new Date(s).toLocaleDateString('de-DE') : '–'; }
+
+  function fail(msg) {
+    app.innerHTML = '<div class="card"><div class="done"><div class="big">🔍</div><h2>' + esc(msg) + '</h2>' +
+      '<p>Bitte wende dich an den Betrieb, der dir diesen Link geschickt hat.</p></div></div>';
+  }
+
+  if (!token || token.length < 20) { fail('Link unvollständig'); return; }
+
+  fetch('/api/public/offer/' + encodeURIComponent(token))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (d) { data = d; render(); })
+    .catch(function () { fail('Angebot nicht gefunden oder Link abgelaufen'); });
+
+  function render() {
+    var o = data.offer || {};
+    var state = data.expired && data.status === 'open' ? 'expired' : data.status;
+    var badges = {
+      open: '⏳ Wartet auf Ihre Entscheidung',
+      accepted: '✅ Angenommen' + (data.responderName ? ' von ' + esc(data.responderName) : '') + ' am ' + dt(data.respondedAt),
+      declined: '❌ Abgelehnt am ' + dt(data.respondedAt),
+      expired: '⏰ Gültigkeit abgelaufen — bitte beim Betrieb melden',
+    };
+
+    var rows = '';
+    var pos = 0;
+    (o.items || []).forEach(function (it) {
+      if (it.isHeader) { rows += '<tr class="head"><td colspan="5">' + esc(it.name || '') + '</td></tr>'; return; }
+      pos++;
+      var sum = (Number(it.qty) || 0) * (Number(it.price) || 0) * (1 - (Number(it.discount) || 0) / 100);
+      rows += '<tr><td>' + esc(it.nr || pos) + '</td><td>' + esc(it.name || '') + '</td>' +
+        '<td class="r">' + (Number(it.qty) || 0).toLocaleString('de-DE') + ' ' + esc(it.unit || '') + '</td>' +
+        '<td class="r">' + eur(it.price) + '</td><td class="r"><b>' + eur(sum) + '</b></td></tr>';
+    });
+
+    var html =
+      '<div class="card">' +
+      '<div class="firm">' + esc(data.firma) + '</div>' +
+      '<h1>Angebot ' + esc(o.number || '') + '</h1>' +
+      (o.title ? '<div class="meta" style="font-size:15px;color:#345;font-weight:600;">' + esc(o.title) + '</div>' : '') +
+      '<div class="meta">' + (o.kunde ? 'Für: ' + esc(o.kunde) + ' · ' : '') + 'vom ' + dt(o.date) + ' · gültig bis ' + dt(o.validUntil) + '</div>' +
+      '<span class="badge ' + esc(state) + '">' + badges[state] + '</span>' +
+      '</div>';
+
+    if (o.description) html += '<div class="card"><div class="desc">' + esc(o.description) + '</div></div>';
+
+    html += '<div class="card"><table><thead><tr><th>Pos</th><th>Leistung</th><th class="r">Menge</th><th class="r">Einzelpreis</th><th class="r">Summe</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>' +
+      '<div class="totals">' +
+      '<div><span>Netto</span><span>' + eur(o.net) + '</span></div>' +
+      '<div><span>USt ' + (o.vatRate != null ? o.vatRate : 19) + ' %</span><span>' + eur(o.ust) + '</span></div>' +
+      '<div class="gross"><span>Gesamt</span><span>' + eur(o.gross) + '</span></div>' +
+      '</div></div>';
+
+    if (o.notes) html += '<div class="card"><div class="terms">' + esc(o.notes) + '</div></div>';
+
+    if (state === 'open') {
+      html += '<div class="card" id="actionCard">' +
+        '<h2 style="font-size:17px;color:#16324e;">Angebot annehmen</h2>' +
+        '<label>Ihr Name (Vor- und Nachname) *</label>' +
+        '<input id="rName" autocomplete="name" placeholder="Max Mustermann">' +
+        '<label>Unterschrift * <span style="font-weight:400;color:#889;">(mit Finger oder Maus zeichnen)</span></label>' +
+        '<div id="sigWrap"><canvas id="sig"></canvas><div id="sigHint">✍ Hier unterschreiben</div>' +
+        '<button id="sigClear" type="button">↺ Neu</button></div>' +
+        '<label>Anmerkung (optional)</label>' +
+        '<textarea id="rComment" rows="2" placeholder="z. B. Wunschtermin, Rückfragen …"></textarea>' +
+        '<div class="btnrow">' +
+        '<button class="main" id="btnAccept">✅ Verbindlich annehmen</button>' +
+        '<button class="decline" id="btnDecline">Ablehnen</button>' +
+        '</div><div class="err" id="rErr"></div>' +
+        '<div class="legal">Mit „Verbindlich annehmen" beauftragen Sie ' + esc(data.firma) +
+        ' rechtsverbindlich mit den oben aufgeführten Leistungen. Zeitpunkt, Name und Unterschrift werden ' +
+        'revisionssicher gespeichert und dem Betrieb übermittelt.</div>' +
+        '</div>';
+    } else if (state === 'accepted') {
+      html += '<div class="card"><div class="done"><div class="big">🎉</div><h2>Vielen Dank!</h2>' +
+        '<p>Das Angebot wurde verbindlich angenommen.<br>' + esc(data.firma) + ' meldet sich zeitnah bei Ihnen.</p></div></div>';
+    }
+
+    app.innerHTML = html;
+    if (state === 'open') wireActions();
+  }
+
+  // --- Unterschrift-Canvas (Pointer Events: Touch + Maus + Stift) ---
+  var hasStrokes = false;
+  function wireActions() {
+    var canvas = document.getElementById('sig');
+    var wrap = document.getElementById('sigWrap');
+    var hint = document.getElementById('sigHint');
+    var ctx = canvas.getContext('2d');
+    function resize() {
+      var r = wrap.getBoundingClientRect();
+      var scale = window.devicePixelRatio || 1;
+      canvas.width = Math.round(r.width * scale);
+      canvas.height = Math.round(160 * scale);
+      ctx.scale(scale, scale);
+      ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#16324e';
+    }
+    resize();
+
+    var drawing = false;
+    function pos(e) {
+      var r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    canvas.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); drawing = true; hasStrokes = true; hint.style.display = 'none';
+      canvas.setPointerCapture(e.pointerId);
+      var p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.1, p.y + 0.1); ctx.stroke();
+    });
+    canvas.addEventListener('pointermove', function (e) {
+      if (!drawing) return; e.preventDefault();
+      var p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      canvas.addEventListener(ev, function () { drawing = false; });
+    });
+    document.getElementById('sigClear').onclick = function () {
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+      resize(); hasStrokes = false; hint.style.display = 'flex';
+    };
+
+    var errEl = document.getElementById('rErr');
+    function respond(action) {
+      var name = document.getElementById('rName').value.trim();
+      if (!name) { errEl.textContent = 'Bitte Namen eingeben.'; return; }
+      if (action === 'accept' && !hasStrokes) { errEl.textContent = 'Bitte unterschreiben.'; return; }
+      if (action === 'decline' && !confirm('Angebot wirklich ablehnen?')) return;
+      var btn = document.getElementById(action === 'accept' ? 'btnAccept' : 'btnDecline');
+      btn.disabled = true;
+      fetch('/api/public/offer/' + encodeURIComponent(token) + '/respond', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: action, name: name,
+          comment: document.getElementById('rComment').value,
+          signature: action === 'accept' ? canvas.toDataURL('image/png') : undefined,
+        }),
+      }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+        .then(function (r) {
+          if (r.s === 200) { data.status = r.j.status; data.respondedAt = new Date().toISOString(); data.responderName = name; render(); window.scrollTo(0, 0); }
+          else { btn.disabled = false; errEl.textContent = r.j.error === 'link-expired' ? 'Der Link ist abgelaufen.' : 'Fehler: ' + (r.j.error || r.s); }
+        })
+        .catch(function () { btn.disabled = false; errEl.textContent = 'Netzwerkfehler — bitte erneut versuchen.'; });
+    }
+    document.getElementById('btnAccept').onclick = function () { respond('accept'); };
+    document.getElementById('btnDecline').onclick = function () { respond('decline'); };
+  }
+})();
+</script>
+</body>
+</html>

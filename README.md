@@ -51,17 +51,46 @@ Brute-Force-Limit), Rollen (Mitarbeiter/Steuerberater), GoBD (unveränderliche
 Revisionen, Audit-Hash-Kette inkl. Manipulationserkennung), DSGVO (Export,
 Löschung mit Karenzfrist), Tarif-Gating, Path-Traversal, ZIP-Restore.
 
-## Tarife (ein Preis pro Betrieb — niemals pro Nutzer)
+## Module & Tarife (ein Preis pro Betrieb — niemals pro Nutzer)
+
+**5 schlanke Module**, die je einen eigenen Kaufgrund haben:
+
+| Modul | Inhalt (App-Bereiche) |
+|---|---|
+| Zeiten & Team | Mitarbeiter, Kolonnen, Tickets, Auswertungen |
+| Aufträge & Baustelle | Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit |
+| Angebote & Rechnungen | Angebote inkl. **Kunden-Link mit Unterschrift**, Rechnungen |
+| Einsatzplanung | Kalender / Drag-&-Drop-Planung |
+| Einkauf & Lager | Lieferanten, Bestellungen, Eingangsrechnungen, Lager |
 
 | Tarif | Preis/Monat | Module |
 |---|---|---|
-| Testphase | 0 € (14 Tage) | alle |
-| START | 15 € | Zeiten |
-| BETRIEB | 35 € | Zeiten, Aufträge, Geld |
-| BETRIEB PLUS | 59 € | alle inkl. Planung, Compliance, KI |
+| Testphase | 0 € (14 Tage) | alle 5 |
+| START | 15 € | Zeiten & Team |
+| BETRIEB | 35 € | + Aufträge, + Angebote/Rechnungen |
+| BETRIEB PLUS | 59 € | alle 5 |
 
-Tarifwahl im Konto-Widget; Zahlungsabwicklung (Stripe SEPA) dockt an
-`POST /api/billing/webhook` an — siehe `server/src/routes.js`.
+**Freischaltung:** Der Tarifabschluss schaltet die Module **automatisch** frei
+(Navigation der App passt sich sofort an). Zusätzlich kann der **Betreiber**
+in der Konsole unter `/admin` (Zugriff via `WERKOS_ADMIN_TOKEN`) pro Mandant
+einzelne Module übersteuern — freischalten oder sperren, unabhängig vom Tarif.
+Zahlungsabwicklung (Stripe SEPA) dockt an `POST /api/billing/webhook` an.
+
+## Angebots-Links (Kunde unterschreibt per Handy)
+
+Im Angebot: **„📲 Kunden-Link (WhatsApp)"** → WERKOS erzeugt einen öffentlichen
+Link (`/angebot#<token>`), teilbar per WhatsApp/Kopieren/QR. Der Kunde sieht das
+Angebot mobiloptimiert, **unterschreibt mit dem Finger** und nimmt verbindlich
+an (oder lehnt mit Kommentar ab). Die Antwort fließt **automatisch** in den
+Angebots-Status der App zurück (inkl. Name, Zeitstempel, Anmerkung); die
+Unterschrift ist im Konto-Widget abrufbar und die Annahme steht revisionssicher
+im GoBD-Audit-Trail. Links sind zeitlich befristet und jederzeit widerrufbar.
+
+## Kein Doppel-Login
+
+Die WERKOS-Anmeldung steuert den App-Modus automatisch: Inhaber/Büro → Admin,
+Steuerberater → Lese-Modus, Mitarbeiter → Mitarbeiter-Ansicht (Zuordnung über
+das Mitarbeiter-Profil mit gleichem Namen, sonst Lese-Modus).
 
 ## Rollen
 

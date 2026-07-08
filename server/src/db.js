@@ -98,6 +98,30 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS files_tenant_path ON files(tenant_id, path, version);
 
+-- Angebots-Links: Kunde öffnet Angebot per Link, unterschreibt und nimmt an/lehnt ab.
+-- payload_json ist ein UNVERÄNDERLICHER Snapshot des Angebots zum Zeitpunkt des Teilens
+-- (GoBD: der Kunde nimmt genau diesen Stand an).
+CREATE TABLE IF NOT EXISTS offer_links (
+  id             TEXT PRIMARY KEY,
+  tenant_id      TEXT NOT NULL REFERENCES tenants(id),
+  token_hash     TEXT NOT NULL,
+  angebot_id     TEXT,
+  number         TEXT,
+  payload_json   TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'open',  -- open | accepted | declined | revoked
+  created_at     TEXT NOT NULL,
+  created_by     TEXT NOT NULL,
+  expires_at     TEXT NOT NULL,
+  opened_at      TEXT,
+  responded_at   TEXT,
+  responder_name TEXT,
+  responder_comment TEXT,
+  responder_ip   TEXT,
+  signature_png  BLOB
+);
+CREATE INDEX IF NOT EXISTS offer_token ON offer_links(token_hash);
+CREATE INDEX IF NOT EXISTS offer_tenant ON offer_links(tenant_id, created_at);
+
 -- GoBD-Audit-Trail: fortlaufende Hash-Kette pro Mandant. Manipulation einzelner
 -- Einträge macht die Kette ab diesem Punkt ungültig (prüfbar via /api/gobd/verify).
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -216,6 +240,52 @@ function revokeMagicLink(tenantId, mid) {
   db.prepare('UPDATE magic_links SET revoked_at = ? WHERE id = ? AND tenant_id = ?').run(nowIso(), mid, tenantId);
 }
 
+// Modul-Overrides des Betreibers (Host): { modulKey: true|false } in settings_json.
+// true = zusätzlich freigeschaltet, false = trotz Tarif gesperrt.
+function getTenantSettings(tid) {
+  const t = getTenant(tid);
+  try { return t ? JSON.parse(t.settings_json || '{}') : {}; } catch (_e) { return {}; }
+}
+function setTenantModuleOverrides(tid, overrides) {
+  const s = getTenantSettings(tid);
+  s.moduleOverrides = overrides || {};
+  db.prepare('UPDATE tenants SET settings_json = ? WHERE id = ?').run(JSON.stringify(s), tid);
+}
+
+// ---------------------------------------------------------------------------
+// Angebots-Links
+// ---------------------------------------------------------------------------
+function createOfferLink({ tenantId, createdBy, tokenHash, angebotId, number, payloadJson, expiresAt }) {
+  const oid = id('ol');
+  db.prepare(`INSERT INTO offer_links (id, tenant_id, token_hash, angebot_id, number, payload_json, created_at, created_by, expires_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(oid, tenantId, tokenHash, angebotId || null, number || null, payloadJson, nowIso(), createdBy, expiresAt);
+  return oid;
+}
+function findOfferLinkByToken(tokenHash) {
+  return db.prepare('SELECT * FROM offer_links WHERE token_hash = ?').get(tokenHash) || null;
+}
+function getOfferLink(tenantId, oid) {
+  return db.prepare('SELECT * FROM offer_links WHERE tenant_id = ? AND id = ?').get(tenantId, oid) || null;
+}
+function listOfferLinks(tenantId) {
+  return db.prepare(`SELECT id, angebot_id, number, status, created_at, expires_at, opened_at,
+    responded_at, responder_name, responder_comment,
+    (signature_png IS NOT NULL) AS has_signature
+    FROM offer_links WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 500`).all(tenantId);
+}
+function markOfferOpened(oid) {
+  db.prepare('UPDATE offer_links SET opened_at = COALESCE(opened_at, ?) WHERE id = ?').run(nowIso(), oid);
+}
+function respondOfferLink(oid, { status, name, comment, ip, signature }) {
+  db.prepare(`UPDATE offer_links SET status = ?, responded_at = ?, responder_name = ?,
+    responder_comment = ?, responder_ip = ?, signature_png = ? WHERE id = ? AND status = 'open'`)
+    .run(status, nowIso(), name || null, comment || null, ip || null, signature || null, oid);
+}
+function revokeOfferLink(tenantId, oid) {
+  db.prepare("UPDATE offer_links SET status = 'revoked' WHERE tenant_id = ? AND id = ? AND status = 'open'").run(tenantId, oid);
+}
+
 // ---------------------------------------------------------------------------
 // State-Revisionen (GoBD-unveränderlich)
 // ---------------------------------------------------------------------------
@@ -280,6 +350,7 @@ function purgeTenant(tenantId) {
   const tx = db.prepare.bind(db);
   db.exec('BEGIN');
   try {
+    tx('DELETE FROM offer_links WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM files WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM state_revisions WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM sessions WHERE tenant_id = ?').run(tenantId);
@@ -301,6 +372,9 @@ function purgeDueTenants() {
 module.exports = {
   db, audit, auditList, auditVerify,
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
+  getTenantSettings, setTenantModuleOverrides,
+  createOfferLink, findOfferLinkByToken, getOfferLink, listOfferLinks,
+  markOfferOpened, respondOfferLink, revokeOfferLink,
   createUser, getUser, getUserByEmail, touchLogin, listUsers,
   createSession, findSessionByRefresh, rotateSession, revokeSession, revokeUserSessions,
   createMagicLink, findMagicLink, useMagicLink, listMagicLinks, revokeMagicLink,

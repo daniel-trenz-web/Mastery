@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WERKOS — Betreiber-Konsole</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #12293f; color: #223; min-height: 100vh; padding: 20px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { color: #fff; font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #9fb3c8; font-size: 13px; margin-bottom: 18px; }
+  .card { background: #fff; border-radius: 12px; padding: 18px; margin-bottom: 14px;
+          box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  input, select { padding: 9px 11px; border: 1px solid #cdd6df; border-radius: 8px; font-size: 14px; }
+  button { padding: 9px 14px; border: none; border-radius: 8px; background: #1a3a5c; color: #fff;
+           font-weight: 600; font-size: 13px; cursor: pointer; }
+  button:hover { background: #2a5080; }
+  button.ghost { background: #eef1f5; color: #345; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 6px; color: #789; font-size: 11px; text-transform: uppercase;
+       border-bottom: 2px solid #e4e9ef; }
+  td { padding: 10px 6px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
+  .plan-badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .plan-TRIAL { background: #fff5df; color: #8a6d1a; }
+  .plan-START { background: #e3edf7; color: #1a3a5c; }
+  .plan-BETRIEB { background: #dff5e7; color: #1e8449; }
+  .plan-BETRIEB_PLUS { background: #ecdff5; color: #6c3483; }
+  .mod { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #f4f7fa;
+         border: 1px solid #e0e7ee; border-radius: 8px; padding: 4px 8px; margin: 2px; cursor: pointer;
+         user-select: none; }
+  .mod.on { background: #dff5e7; border-color: #b5e0c5; color: #1e8449; font-weight: 700; }
+  .mod.override { outline: 2px dashed #f39c12; }
+  .hint { font-size: 11px; color: #92a0af; margin-top: 6px; }
+  .err { color: #ffb3ab; font-size: 13px; margin-top: 10px; }
+  .muted { color: #92a0af; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛠 WERKOS — Betreiber-Konsole</h1>
+  <div class="sub">Mandanten, Tarife und Modul-Freischaltungen verwalten. Zugriff nur mit Admin-Token (Server: <code>WERKOS_ADMIN_TOKEN</code>).</div>
+  <div class="card" id="loginCard">
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <input type="password" id="tok" placeholder="Admin-Token" style="flex:1; min-width:240px;">
+      <button id="go">Anmelden</button>
+    </div>
+    <div class="err" id="loginErr"></div>
+  </div>
+  <div id="list"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var token = sessionStorage.getItem('werkos_admin_token') || '';
+  var catalog = {}, plans = {};
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  function api(method, path, body) {
+    return fetch(path, {
+      method: method,
+      headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); });
+  }
+
+  function load() {
+    api('GET', '/api/admin/tenants').then(function (r) {
+      if (r.s !== 200) {
+        sessionStorage.removeItem('werkos_admin_token');
+        document.getElementById('loginErr').textContent = r.s === 401 ? 'Token ungültig.' : 'Fehler ' + r.s;
+        return;
+      }
+      sessionStorage.setItem('werkos_admin_token', token);
+      document.getElementById('loginCard').style.display = 'none';
+      catalog = r.j.moduleCatalog || {};
+      plans = r.j.plans || {};
+      render(r.j.tenants || []);
+    });
+  }
+
+  function render(tenants) {
+    var el = document.getElementById('list');
+    var html = '<div class="card"><table><thead><tr><th>Betrieb</th><th>Tarif</th>' +
+      '<th>Module (Klick = Host-Override an/aus)</th><th>Nutzer</th><th>Status</th></tr></thead><tbody>';
+    tenants.forEach(function (t) {
+      var planOpts = Object.keys(plans).map(function (p) {
+        return '<option value="' + p + '"' + (t.plan === p ? ' selected' : '') + '>' + esc(plans[p].label) + (plans[p].priceEur ? ' (' + plans[p].priceEur + ' €)' : '') + '</option>';
+      }).join('');
+      var planModules = (plans[t.plan] || {}).modules || [];
+      var mods = Object.keys(catalog).map(function (k) {
+        var eff = (t.effective_modules || []).indexOf(k) >= 0;
+        var ov = t.module_overrides && typeof t.module_overrides[k] === 'boolean';
+        return '<span class="mod' + (eff ? ' on' : '') + (ov ? ' override' : '') + '" data-tid="' + esc(t.id) + '" data-mod="' + k + '" title="' + esc(catalog[k].desc) +
+          (ov ? ' — HOST-OVERRIDE aktiv' : (planModules.indexOf(k) >= 0 ? ' — im Tarif enthalten' : ' — nicht im Tarif')) + '">' +
+          (eff ? '✓ ' : '') + esc(catalog[k].label) + '</span>';
+      }).join('');
+      html += '<tr><td><b>' + esc(t.name) + '</b><br><span class="muted" style="font-size:11px;">' + esc(t.id) + '</span></td>' +
+        '<td><span class="plan-badge plan-' + esc(t.plan) + '">' + esc((plans[t.plan] || {}).label || t.plan) + '</span><br>' +
+        '<select data-plansel="' + esc(t.id) + '" style="margin-top:6px; font-size:12px;">' + planOpts + '</select></td>' +
+        '<td>' + mods + '<div class="hint">Gestrichelt = Host-Override (unabhängig vom Tarif)</div></td>' +
+        '<td>' + (t.user_count || 0) + '<br><span class="muted" style="font-size:11px;">Rev ' + (t.last_rev || 0) + '</span></td>' +
+        '<td>' + esc(t.status) + (t.delete_after ? '<br><span class="muted" style="font-size:11px;">Löschung: ' + esc(t.delete_after.slice(0, 10)) + '</span>' : '') + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+
+    // Tarif ändern
+    el.querySelectorAll('select[data-plansel]').forEach(function (sel) {
+      sel.onchange = function () {
+        api('POST', '/api/admin/tenants/' + sel.dataset.plansel + '/plan', { plan: sel.value }).then(load);
+      };
+    });
+    // Modul-Override togglen: aus effektiv → false; nicht effektiv → true; Override entfernen bei drittem Klick
+    el.querySelectorAll('.mod').forEach(function (m) {
+      m.onclick = function () {
+        var tid = m.dataset.tid, key = m.dataset.mod;
+        var t = tenants.find(function (x) { return x.id === tid; });
+        var ov = Object.assign({}, t.module_overrides || {});
+        if (typeof ov[key] === 'boolean') delete ov[key];           // Override entfernen → zurück zum Tarif
+        else ov[key] = (t.effective_modules || []).indexOf(key) < 0; // freischalten wenn aus, sperren wenn an
+        api('POST', '/api/admin/tenants/' + tid + '/modules', { overrides: ov }).then(load);
+      };
+    });
+  }
+
+  document.getElementById('go').onclick = function () {
+    token = document.getElementById('tok').value.trim();
+    if (token) load();
+  };
+  document.getElementById('tok').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('go').click();
+  });
+  if (token) load();
+})();
+</script>
+</body>
+</html>

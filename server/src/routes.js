@@ -41,13 +41,29 @@ function issueSession(user, tenant, req) {
   };
 }
 
+// Effektive Module = Tarif-Module + Host-Overrides (Betreiber kann pro Mandant
+// einzelne Module zusätzlich freischalten oder sperren).
+function effectiveModules(tenant) {
+  const plan = cfg.PLANS[tenant.plan];
+  const set = new Set(plan ? plan.modules : []);
+  const overrides = (dbm.getTenantSettings(tenant.id).moduleOverrides) || {};
+  for (const [k, v] of Object.entries(overrides)) {
+    if (!cfg.MODULES[k]) continue;
+    if (v === true) set.add(k); else if (v === false) set.delete(k);
+  }
+  return [...set];
+}
+
+function moduleAllowed(tenant, key) { return effectiveModules(tenant).includes(key); }
+
 function accountInfo(tenant) {
   const plan = cfg.PLANS[tenant.plan] || null;
   const trialEnds = tenant.trial_ends_at ? new Date(tenant.trial_ends_at).getTime() : 0;
   return {
     id: tenant.id, name: tenant.name, plan: tenant.plan,
     planLabel: plan ? plan.label : tenant.plan,
-    modules: plan ? plan.modules : [],
+    modules: effectiveModules(tenant),
+    moduleCatalog: cfg.MODULES,
     priceEur: plan ? plan.priceEur : null,
     trialEndsAt: tenant.trial_ends_at,
     trialExpired: tenant.plan === 'TRIAL' && trialEnds > 0 && trialEnds < Date.now(),
@@ -307,6 +323,101 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, { ok: true, files, stateRev });
   }
 
+  // ---------- ANGEBOTS-LINKS (Kunde signiert per Link) ----------
+  // Mandant erzeugt einen öffentlichen Link zu einem Angebots-Snapshot.
+  if (pathname === '/api/t/offers/share' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return;
+    if (!moduleAllowed(ctx.tenant, 'geld')) return err(res, 403, 'module-not-active', { module: 'geld' });
+    const b = await readJson(req, cfg.MAX_OFFER_PAYLOAD);
+    if (!b.payload || typeof b.payload !== 'object') return err(res, 400, 'payload-required');
+    const { token, hash } = opaqueToken();
+    const days = Math.min(Math.max(Number(b.days) || cfg.OFFER_LINK_DAYS, 1), 90);
+    const expiresAt = new Date(Date.now() + days * 864e5).toISOString();
+    const linkId = dbm.createOfferLink({
+      tenantId: ctx.tenant.id, createdBy: ctx.user.id, tokenHash: hash,
+      angebotId: String(b.angebotId || '').slice(0, 80) || null,
+      number: String(b.payload.number || '').slice(0, 60) || null,
+      payloadJson: JSON.stringify(b.payload), expiresAt,
+    });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'angebot.link-created', { linkId, number: b.payload.number, expiresAt });
+    return send(res, 201, { linkId, url: baseUrl(req) + '/angebot#' + token, expiresAt });
+  }
+
+  if (pathname === '/api/t/offers/links' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return;
+    return send(res, 200, { links: dbm.listOfferLinks(ctx.tenant.id) });
+  }
+
+  const offRevoke = pathname.match(/^\/api\/t\/offers\/links\/([^/]+)\/revoke$/);
+  if (offRevoke && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return;
+    dbm.revokeOfferLink(ctx.tenant.id, offRevoke[1]);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'angebot.link-revoked', { linkId: offRevoke[1] });
+    return send(res, 200, { ok: true });
+  }
+
+  const offSig = pathname.match(/^\/api\/t\/offers\/links\/([^/]+)\/signature$/);
+  if (offSig && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner', 'office', 'external'])) return;
+    const link = dbm.getOfferLink(ctx.tenant.id, offSig[1]);
+    if (!link || !link.signature_png) return err(res, 404, 'not-found');
+    return send(res, 200, Buffer.from(link.signature_png), { 'Content-Type': 'image/png' });
+  }
+
+  // ÖFFENTLICH (ohne Login): Kunde ruft Angebot auf und antwortet.
+  const pubOffer = pathname.match(/^\/api\/public\/offer\/([A-Za-z0-9_-]{20,})$/);
+  if (pubOffer && m === 'GET') {
+    if (!rateLimit('pubof:' + clientIp(req), 120, 900e3)) return err(res, 429, 'rate-limited');
+    const link = dbm.findOfferLinkByToken(sha256(pubOffer[1]));
+    if (!link || link.status === 'revoked') return err(res, 404, 'not-found');
+    const tenant = dbm.getTenant(link.tenant_id);
+    if (!tenant || tenant.status !== 'active') return err(res, 404, 'not-found');
+    const expired = new Date(link.expires_at).getTime() < Date.now();
+    if (link.status === 'open' && !expired) dbm.markOfferOpened(link.id);
+    let payload = null;
+    try { payload = JSON.parse(link.payload_json); } catch (_e) {}
+    return send(res, 200, {
+      firma: tenant.name, status: link.status, expired,
+      expiresAt: link.expires_at, respondedAt: link.responded_at,
+      responderName: link.responder_name, offer: payload,
+    });
+  }
+
+  const pubRespond = pathname.match(/^\/api\/public\/offer\/([A-Za-z0-9_-]{20,})\/respond$/);
+  if (pubRespond && m === 'POST') {
+    if (!rateLimit('pubre:' + clientIp(req), 15, 900e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, cfg.MAX_SIGNATURE_BYTES + 32e3);
+    const link = dbm.findOfferLinkByToken(sha256(pubRespond[1]));
+    if (!link || link.status === 'revoked') return err(res, 404, 'not-found');
+    if (link.status !== 'open') return err(res, 409, 'already-responded');
+    if (new Date(link.expires_at).getTime() < Date.now()) return err(res, 410, 'link-expired');
+    const action = b.action === 'accept' ? 'accepted' : (b.action === 'decline' ? 'declined' : null);
+    if (!action) return err(res, 400, 'invalid-action');
+    const name = String(b.name || '').trim().slice(0, 120);
+    if (!name) return err(res, 400, 'name-required');
+    let signature = null;
+    if (action === 'accepted') {
+      const durl = String(b.signature || '');
+      if (!durl.startsWith('data:image/png;base64,')) return err(res, 400, 'signature-required');
+      try { signature = Buffer.from(durl.slice(22), 'base64'); } catch (_e) { return err(res, 400, 'signature-invalid'); }
+      if (!signature.length || signature.length > cfg.MAX_SIGNATURE_BYTES) return err(res, 400, 'signature-invalid');
+    }
+    dbm.respondOfferLink(link.id, {
+      status: action, name, comment: String(b.comment || '').slice(0, 2000),
+      ip: clientIp(req), signature,
+    });
+    // GoBD/Vertragsschluss: Annahme mit Zeitstempel, Name und IP im Audit-Trail
+    dbm.audit(link.tenant_id, 'kunde:' + name, 'angebot.' + action, {
+      linkId: link.id, number: link.number, ip: clientIp(req), hasSignature: !!signature,
+    });
+    return send(res, 200, { ok: true, status: action });
+  }
+
   // ---------- GoBD ----------
   if (pathname === '/api/gobd/audit' && m === 'GET') {
     const ctx = requireAuth(req, res); if (!ctx) return;
@@ -392,7 +503,27 @@ async function handleApi(req, res, pathname) {
   // ---------- PLATTFORM-ADMIN ----------
   if (pathname.startsWith('/api/admin/')) {
     if (!cfg.ADMIN_TOKEN || req.headers['x-admin-token'] !== cfg.ADMIN_TOKEN) return err(res, 401, 'unauthorized');
-    if (pathname === '/api/admin/tenants' && m === 'GET') return send(res, 200, { tenants: dbm.listTenants() });
+    if (pathname === '/api/admin/tenants' && m === 'GET') {
+      const tenants = dbm.listTenants().map((t) => Object.assign({}, t, {
+        effective_modules: effectiveModules(t),
+        module_overrides: dbm.getTenantSettings(t.id).moduleOverrides || {},
+      }));
+      return send(res, 200, { tenants, plans: cfg.PLANS, moduleCatalog: cfg.MODULES });
+    }
+    // Host schaltet Module pro Mandant frei/sperrt sie (unabhängig vom Tarif)
+    const modMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/modules$/);
+    if (modMatch && m === 'POST') {
+      const b = await readJson(req, 16e3);
+      const t = dbm.getTenant(modMatch[1]);
+      if (!t) return err(res, 404, 'not-found');
+      const overrides = {};
+      for (const [k, v] of Object.entries(b.overrides || {})) {
+        if (cfg.MODULES[k] && typeof v === 'boolean') overrides[k] = v;
+      }
+      dbm.setTenantModuleOverrides(t.id, overrides);
+      dbm.audit(t.id, 'platform-admin', 'modules.overridden', { overrides });
+      return send(res, 200, { ok: true, effective_modules: effectiveModules(dbm.getTenant(t.id)) });
+    }
     const planMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/plan$/);
     if (planMatch && m === 'POST') {
       const b = await readJson(req, 16e3);

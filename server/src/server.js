@@ -29,6 +29,9 @@ function securityHeaders(res) {
 
 function serveStatic(req, res, pathname) {
   if (pathname === '/') pathname = '/app.html';
+  else if (pathname === '/angebot') pathname = '/offer.html';       // öffentliche Angebotsseite
+  else if (pathname === '/admin') pathname = '/admin.html';         // Betreiber-Konsole
+  else if (pathname === '/favicon.ico') pathname = '/icons/icon-192.png';
   // Nur Dateien innerhalb von WEB_DIR — Traversal hart verhindern
   const clean = path.normalize(pathname).replace(/^([/\\])+/, '');
   const file = path.join(cfg.WEB_DIR, clean);

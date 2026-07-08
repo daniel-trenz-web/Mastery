@@ -78,3 +78,22 @@ kommerziellen Start von einem Fachanwalt/Steuerberater prüfen lassen.
    via Admin-API.
 4. **E-Mail-Versand** (Passwort-Reset, Magic-Link per Mail): V1 verteilt Links
    per QR/Messenger durch den Chef; SMTP-Anbindung ist der nächste Ausbauschritt.
+
+---
+
+## 4. Angebots-Links & digitale Annahme (rechtlicher Rahmen)
+
+- Die Annahme per Klick + gezeichneter Unterschrift ist eine **elektronische
+  Willenserklärung** (formfreier Werkvertrag, § 631 BGB) — für typische
+  Handwerksaufträge ausreichend; KEINE qualifizierte elektronische Signatur
+  (für formbedürftige Geschäfte, z. B. Verbraucherbauverträge § 650i BGB,
+  Textform-/Widerrufspflichten beachten!).
+- Beweissicherung: Angebots-**Snapshot** (unveränderlich), Unterschrift-PNG,
+  Name, Zeitstempel und IP werden gespeichert; die Annahme steht als Eintrag
+  in der GoBD-Hash-Kette.
+- Verbraucher-Hinweis: Bei Verträgen, die außerhalb von Geschäftsräumen
+  geschlossen werden, Widerrufsbelehrung ergänzen (Textbaustein im Angebot
+  hinterlegen — Betreiber-Aufgabe vor Verkaufsstart).
+- Links sind mit 256-Bit-Zufalls-Token geschützt (nur Hash gespeichert),
+  zeitlich befristet, einmal beantwortbar und widerrufbar; öffentliche
+  Endpunkte sind rate-limitiert.

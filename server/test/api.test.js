@@ -375,6 +375,129 @@ test('Admin-API: nur mit Admin-Token', async () => {
   assert.ok(Array.isArray(yes.data.tenants) && yes.data.tenants.length > 0);
 });
 
+// ---------------------------------------------------------------------------
+test('Module: Tarif schaltet automatisch frei, Host-Override gewinnt', async () => {
+  const s = await register('Module GmbH', 'module@test.de');
+
+  // Testphase: alle 5 Module
+  let acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules.sort(), ['auftraege', 'einkauf', 'geld', 'planung', 'zeiten']);
+  assert.ok(acc.data.tenant.moduleCatalog.zeiten.appModules.includes('employees'));
+
+  // START: nur zeiten (automatisch mit Tarifwahl)
+  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'START' } });
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
+
+  // Host schaltet zusätzlich "geld" frei, sperrt "zeiten"
+  const ov = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/modules', {
+    headers: { 'X-Admin-Token': 'test-admin-token' },
+    body: { overrides: { geld: true, zeiten: false, quatsch: true } },
+  });
+  assert.equal(ov.status, 200);
+  assert.deepEqual(ov.data.effective_modules, ['geld'], 'Override: +geld, -zeiten, unbekannte Keys ignoriert');
+
+  // Upgrade auf BETRIEB: Tarif-Module + Overrides kombiniert
+  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'BETRIEB' } });
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules.sort(), ['auftraege', 'geld'], 'zeiten bleibt per Override gesperrt');
+
+  // Admin-Liste zeigt Overrides + effektive Module
+  const list = await api('GET', '/api/admin/tenants', { headers: { 'X-Admin-Token': 'test-admin-token' } });
+  const me = list.data.tenants.find((t) => t.id === s.tenant.id);
+  assert.deepEqual(me.module_overrides, { geld: true, zeiten: false });
+});
+
+// ---------------------------------------------------------------------------
+test('Angebots-Link: teilen → Kunde nimmt mit Unterschrift an → Status beim Mandanten', async () => {
+  const s = await register('Angebots GmbH', 'angebot@test.de');
+  const payload = {
+    number: 'AN-2026-0042', title: 'Badsanierung', date: '2026-07-01', validUntil: '2026-08-01',
+    kunde: 'Familie Müller', vatRate: 19, net: 1000, ust: 190, gross: 1190,
+    items: [{ nr: 1, name: 'Fliesen legen', qty: 10, unit: 'm²', price: 100 }],
+  };
+
+  // Teilen (owner)
+  const share = await api('POST', '/api/t/offers/share', { token: s.accessToken, body: { angebotId: 'ang1', payload } });
+  assert.equal(share.status, 201, JSON.stringify(share.data));
+  const token = share.data.url.split('#')[1];
+  assert.ok(token && token.length >= 20);
+
+  // Kunde ruft öffentlich ab (ohne Login!)
+  const pub = await api('GET', '/api/public/offer/' + token);
+  assert.equal(pub.status, 200);
+  assert.equal(pub.data.firma, 'Angebots GmbH');
+  assert.equal(pub.data.status, 'open');
+  assert.equal(pub.data.offer.gross, 1190);
+
+  // Annahme ohne Unterschrift → abgelehnt
+  const noSig = await api('POST', '/api/public/offer/' + token + '/respond', { body: { action: 'accept', name: 'Hans Müller' } });
+  assert.equal(noSig.status, 400);
+
+  // Annahme mit Unterschrift (Mini-PNG)
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]).toString('base64');
+  const acc = await api('POST', '/api/public/offer/' + token + '/respond', {
+    body: { action: 'accept', name: 'Hans Müller', comment: 'Bitte ab KW 32', signature: png },
+  });
+  assert.equal(acc.status, 200);
+  assert.equal(acc.data.status, 'accepted');
+
+  // Doppelte Antwort blockiert
+  const dup = await api('POST', '/api/public/offer/' + token + '/respond', { body: { action: 'decline', name: 'X Y' } });
+  assert.equal(dup.status, 409);
+
+  // Mandant sieht Antwort inkl. Unterschrift
+  const links = await api('GET', '/api/t/offers/links', { token: s.accessToken });
+  assert.equal(links.data.links.length, 1);
+  const l = links.data.links[0];
+  assert.equal(l.status, 'accepted');
+  assert.equal(l.responder_name, 'Hans Müller');
+  assert.equal(l.responder_comment, 'Bitte ab KW 32');
+  assert.equal(l.has_signature, 1);
+  const sig = await api('GET', '/api/t/offers/links/' + l.id + '/signature', { token: s.accessToken });
+  assert.equal(sig.status, 200);
+  assert.ok(Buffer.isBuffer(sig.data) && sig.data.length > 8);
+
+  // Annahme ist im GoBD-Audit-Trail
+  const audit = await api('GET', '/api/gobd/audit', { token: s.accessToken });
+  assert.ok(audit.data.entries.some((e) => e.action === 'angebot.accepted'));
+
+  // Fremder Mandant sieht NICHTS davon (Isolation)
+  const other = await register('Fremd GmbH', 'fremd-angebot@test.de');
+  const otherLinks = await api('GET', '/api/t/offers/links', { token: other.accessToken });
+  assert.equal(otherLinks.data.links.length, 0);
+  const otherSig = await api('GET', '/api/t/offers/links/' + l.id + '/signature', { token: other.accessToken });
+  assert.equal(otherSig.status, 404);
+});
+
+test('Angebots-Link: Widerruf und Modul-Gate', async () => {
+  const s = await register('Widerruf GmbH', 'widerruf@test.de');
+  const share = await api('POST', '/api/t/offers/share', { token: s.accessToken, body: { payload: { number: 'AN-1', gross: 100, items: [] } } });
+  const token = share.data.url.split('#')[1];
+
+  // Widerruf → Kunde sieht 404
+  await api('POST', '/api/t/offers/links/' + share.data.linkId + '/revoke', { token: s.accessToken });
+  const pub = await api('GET', '/api/public/offer/' + token);
+  assert.equal(pub.status, 404);
+
+  // START-Tarif hat kein "geld" → Teilen blockiert
+  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'START' } });
+  const blocked = await api('POST', '/api/t/offers/share', { token: s.accessToken, body: { payload: { number: 'AN-2', items: [] } } });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.data.error, 'module-not-active');
+
+  // Mitarbeiter dürfen nicht teilen
+  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'BETRIEB' } });
+  const inv = await api('POST', '/api/auth/invite', { token: s.accessToken, body: { role: 'employee' } });
+  const emp = await api('POST', '/api/auth/magic', { body: { token: inv.data.url.split('#invite=')[1] } });
+  const empShare = await api('POST', '/api/t/offers/share', { token: emp.data.accessToken, body: { payload: { number: 'AN-3', items: [] } } });
+  assert.equal(empShare.status, 403);
+
+  // Ungültiger Token → 404 (kein Enumerieren)
+  const bogus = await api('GET', '/api/public/offer/' + 'A'.repeat(43));
+  assert.equal(bogus.status, 404);
+});
+
 test('Statische Auslieferung: PWA und Bibliotheken erreichbar', async () => {
   const r = await fetch(BASE + '/');
   assert.equal(r.status, 200);
@@ -384,4 +507,11 @@ test('Statische Auslieferung: PWA und Bibliotheken erreichbar', async () => {
   assert.equal(lib.status, 200);
   const saas = await fetch(BASE + '/saas.js');
   assert.equal(saas.status, 200, 'saas.js (Login-Bootstrap) muss ausgeliefert werden');
+  const offer = await fetch(BASE + '/angebot');
+  assert.equal(offer.status, 200, 'öffentliche Angebotsseite muss erreichbar sein');
+  assert.ok((await offer.text()).includes('Unterschrift'));
+  const admin = await fetch(BASE + '/admin');
+  assert.equal(admin.status, 200, 'Betreiber-Konsole muss erreichbar sein');
+  const fav = await fetch(BASE + '/favicon.ico');
+  assert.equal(fav.status, 200, 'Favicon-Route');
 });
