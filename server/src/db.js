@@ -122,6 +122,22 @@ CREATE TABLE IF NOT EXISTS offer_links (
 CREATE INDEX IF NOT EXISTS offer_token ON offer_links(token_hash);
 CREATE INDEX IF NOT EXISTS offer_tenant ON offer_links(tenant_id, created_at);
 
+-- Demo-/Kontakt-Anfragen von der Website (Leads) — DSGVO: nur mit Consent,
+-- Zeitstempel + IP als Nachweis der Einwilligung (Art. 7 Abs. 1 DSGVO).
+CREATE TABLE IF NOT EXISTS leads (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  company      TEXT,
+  email        TEXT NOT NULL,
+  phone        TEXT,
+  message      TEXT,
+  consent_at   TEXT NOT NULL,
+  consent_ip   TEXT,
+  source       TEXT NOT NULL DEFAULT 'demo',
+  tenant_id    TEXT,
+  created_at   TEXT NOT NULL
+);
+
 -- GoBD-Audit-Trail: fortlaufende Hash-Kette pro Mandant. Manipulation einzelner
 -- Einträge macht die Kette ab diesem Punkt ungültig (prüfbar via /api/gobd/verify).
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -253,6 +269,21 @@ function setTenantModuleOverrides(tid, overrides) {
 }
 
 // ---------------------------------------------------------------------------
+// Leads (Demo-Anfragen von der Website)
+// ---------------------------------------------------------------------------
+function createLead({ name, company, email, phone, message, consentIp, source, tenantId }) {
+  const lid = id('ld');
+  db.prepare(`INSERT INTO leads (id, name, company, email, phone, message, consent_at, consent_ip, source, tenant_id, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(lid, name, company || null, email, phone || null, message || null, nowIso(), consentIp || null, source || 'demo', tenantId || null, nowIso());
+  return lid;
+}
+function listLeads() {
+  return db.prepare('SELECT * FROM leads ORDER BY created_at DESC LIMIT 1000').all();
+}
+function deleteLead(lid) { db.prepare('DELETE FROM leads WHERE id = ?').run(lid); }
+
+// ---------------------------------------------------------------------------
 // Angebots-Links
 // ---------------------------------------------------------------------------
 function createOfferLink({ tenantId, createdBy, tokenHash, angebotId, number, payloadJson, expiresAt }) {
@@ -350,6 +381,7 @@ function purgeTenant(tenantId) {
   const tx = db.prepare.bind(db);
   db.exec('BEGIN');
   try {
+    tx('DELETE FROM leads WHERE tenant_id = ?').run(tenantId); // DSGVO: Lead-Daten mitlöschen
     tx('DELETE FROM offer_links WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM files WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM state_revisions WHERE tenant_id = ?').run(tenantId);
@@ -373,6 +405,7 @@ module.exports = {
   db, audit, auditList, auditVerify,
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
   getTenantSettings, setTenantModuleOverrides,
+  createLead, listLeads, deleteLead,
   createOfferLink, findOfferLinkByToken, getOfferLink, listOfferLinks,
   markOfferOpened, respondOfferLink, revokeOfferLink,
   createUser, getUser, getUserByEmail, touchLogin, listUsers,

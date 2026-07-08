@@ -199,7 +199,7 @@ async function handleApi(req, res, pathname) {
       tokenHash: hash, maxUses: Math.min(Math.max(Number(b.maxUses) || 1, 1), 50), expiresAt,
     });
     dbm.audit(ctx.tenant.id, ctx.user.id, 'invite.created', { linkId, role, expiresAt });
-    return send(res, 201, { url: baseUrl(req) + '/#invite=' + token, expiresAt, role, linkId });
+    return send(res, 201, { url: baseUrl(req) + '/app#invite=' + token, expiresAt, role, linkId });
   }
 
   if (pathname === '/api/auth/invites' && m === 'GET') {
@@ -215,6 +215,37 @@ async function handleApi(req, res, pathname) {
     dbm.revokeMagicLink(ctx.tenant.id, mid);
     dbm.audit(ctx.tenant.id, ctx.user.id, 'invite.revoked', { linkId: mid });
     return send(res, 200, { ok: true });
+  }
+
+  // Demo-Zugang von der Website: Kontaktdaten + DSGVO-Consent → sofort nutzbarer
+  // Testbetrieb (14 Tage, alle Module) + einmalig angezeigtes Passwort.
+  if (pathname === '/api/public/demo' && m === 'POST') {
+    if (!rateLimit('demo:' + clientIp(req), 5, 3600e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 32e3);
+    const email = normEmail(b.email);
+    const name = String(b.name || '').trim();
+    const company = String(b.company || '').trim();
+    if (b.consent !== true) return err(res, 400, 'consent-required', { hint: 'Bitte Datenschutzerklärung zustimmen.' });
+    if (!isEmail(email)) return err(res, 400, 'invalid-email');
+    if (name.length < 2) return err(res, 400, 'invalid-name');
+    if (company.length < 2) return err(res, 400, 'invalid-company');
+    if (dbm.getUserByEmail(email)) return err(res, 409, 'email-exists', { hint: 'Diese E-Mail hat bereits einen Zugang — bitte anmelden.' });
+    // Gut lesbares Einmal-Passwort (wird dem Nutzer einmalig angezeigt)
+    const password = 'werkos-' + id().slice(0, 10);
+    const tenant = dbm.createTenant({
+      name: company,
+      trialEndsAt: new Date(Date.now() + cfg.TRIAL_DAYS * 864e5).toISOString(),
+    });
+    const user = dbm.createUser({ tenantId: tenant.id, email, name, role: 'owner', passHash: hashPassword(password) });
+    dbm.createLead({
+      name, company, email, phone: String(b.phone || '').slice(0, 60),
+      message: String(b.message || '').slice(0, 2000),
+      consentIp: clientIp(req), source: 'website-demo', tenantId: tenant.id,
+    });
+    dbm.audit(tenant.id, user.id, 'tenant.created', { company, email, source: 'website-demo', consent: true });
+    dbm.touchLogin(user.id);
+    const session = issueSession(user, tenant, req);
+    return send(res, 201, Object.assign({ password }, session));
   }
 
   // ---------- KONTO ----------
@@ -537,6 +568,9 @@ async function handleApi(req, res, pathname) {
     if (pathname === '/api/admin/purge-due' && m === 'POST') {
       return send(res, 200, { purged: dbm.purgeDueTenants() });
     }
+    if (pathname === '/api/admin/leads' && m === 'GET') return send(res, 200, { leads: dbm.listLeads() });
+    const leadDel = pathname.match(/^\/api\/admin\/leads\/([^/]+)$/);
+    if (leadDel && m === 'DELETE') { dbm.deleteLead(leadDel[1]); return send(res, 200, { ok: true }); }
     return err(res, 404, 'not-found');
   }
 

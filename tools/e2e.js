@@ -25,7 +25,7 @@ async function main() {
   const step = (s) => console.log('E2E ▶', s);
 
   step('Seite laden');
-  await page.goto('http://127.0.0.1:' + PORT + '/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:' + PORT + '/app', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#werkosGate', { timeout: 10000 });
   step('Login-Gate sichtbar ✓');
 

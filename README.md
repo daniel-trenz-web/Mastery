@@ -36,9 +36,24 @@ Module sind Feature-Flags pro Tarif auf derselben Datenbasis.
 node server/src/index.js        # → http://localhost:4000
 ```
 
-Im Browser öffnen → **Betrieb registrieren** (14 Tage Testphase, alle Module,
-ohne Zahlungsdaten). Mitarbeiter kommen **ohne Passwort** per Einladungs-Link/QR
-dazu (Konto-Widget unten links → „Mitarbeiter einladen").
+**Seitenstruktur:**
+
+| Pfad | Inhalt |
+|---|---|
+| `/` | Marketing-Website (Funktionen, Preise, FAQ, Demo-Formular mit DSGVO-Consent) |
+| `/app` | die Anwendung (Login/Registrierung, PWA) |
+| `/angebot#<token>` | öffentliche Angebotsseite (Kunde unterschreibt) |
+| `/admin` | Betreiber-Konsole (Tarife, Modul-Overrides, Leads) |
+| `/impressum`, `/datenschutz` | Rechtsseiten (Platzhalter vor Go-Live füllen!) |
+
+**Demo-Zugang von der Website:** Das Formular (Name, Firma, E-Mail, Consent-
+Checkbox) legt sofort einen echten Testbetrieb an (14 Tage, alle Module),
+zeigt einmalig die Zugangsdaten und leitet eingeloggt in die App. Der Lead
+wird mit Consent-Zeitstempel + IP gespeichert (Art. 7 DSGVO) und ist unter
+`GET /api/admin/leads` abrufbar bzw. löschbar.
+
+Mitarbeiter kommen **ohne Passwort** per Einladungs-Link/QR dazu
+(Konto-Widget unten links → „Mitarbeiter einladen").
 
 ## Tests
 

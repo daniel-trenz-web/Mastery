@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WERKOS — Dein ganzer Betrieb in einer App | Handwerker-Software ab 15 €/Monat</title>
+<meta name="description" content="Zeiten, Aufträge, Angebote mit digitaler Unterschrift, Rechnungen, Einsatzplanung — ein Preis pro Betrieb, egal wie viele Mitarbeiter. DSGVO- & GoBD-konform, Daten in Deutschland. 14 Tage kostenlos testen.">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<meta name="theme-color" content="#12293f">
+<style>
+  :root {
+    --navy: #12293f; --navy2: #1a3a5c; --blue: #2a5080;
+    --green: #1e8449; --green-soft: #dff5e7; --wa: #25D366;
+    --ink: #1c2b3a; --mut: #5b6b7c; --soft: #8395a7;
+    --bg: #f6f8fa; --line: #e3e9ef; --card: #fff;
+    --r: 14px; --shadow: 0 10px 34px rgba(18, 41, 63, .10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         color: var(--ink); background: var(--bg); line-height: 1.6; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--blue); text-decoration: none; }
+
+  /* ---------- Nav ---------- */
+  nav { position: sticky; top: 0; z-index: 50; background: rgba(18,41,63,.96);
+        backdrop-filter: blur(8px); color: #fff; }
+  nav .wrap { display: flex; align-items: center; gap: 26px; height: 62px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px;
+          color: #fff; letter-spacing: .3px; }
+  .logo .mark { width: 32px; height: 32px; border-radius: 9px; background: #fff; color: var(--navy);
+                display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 900; }
+  nav .links { display: flex; gap: 22px; margin-left: 12px; }
+  nav .links a { color: #c8d6e4; font-size: 14px; font-weight: 600; }
+  nav .links a:hover { color: #fff; }
+  nav .cta { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .btn { display: inline-block; padding: 11px 20px; border-radius: 10px; font-weight: 700;
+         font-size: 14px; cursor: pointer; border: none; text-align: center; }
+  .btn.primary { background: var(--green); color: #fff; }
+  .btn.primary:hover { background: #23985a; }
+  .btn.ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.35); }
+  .btn.ghost:hover { border-color: #fff; }
+  .btn.navy { background: var(--navy2); color: #fff; }
+  .btn.navy:hover { background: var(--blue); }
+  .btn.big { padding: 15px 28px; font-size: 16px; border-radius: 12px; }
+
+  /* ---------- Hero ---------- */
+  header.hero { background: linear-gradient(160deg, var(--navy) 0%, var(--navy2) 60%, #24507c 100%);
+                color: #fff; padding: 72px 0 90px; overflow: hidden; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center; }
+  .kicker { display: inline-block; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+            padding: 5px 14px; border-radius: 16px; font-size: 12.5px; font-weight: 700; margin-bottom: 18px; }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); line-height: 1.12; letter-spacing: -.5px; font-weight: 850; }
+  h1 em { font-style: normal; color: #7ee2a8; }
+  .hero p.sub { margin: 18px 0 26px; font-size: 17px; color: #c8d6e4; max-width: 520px; }
+  .hero .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+  .trust { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 26px; font-size: 13px; color: #9fb3c8; }
+  .trust span { display: flex; gap: 7px; align-items: center; }
+
+  /* Mockups (rein CSS — keine externen Bilder) */
+  .mockups { position: relative; min-height: 420px; }
+  .browser { background: #fff; border-radius: 14px; box-shadow: 0 30px 70px rgba(0,0,0,.4);
+             overflow: hidden; color: var(--ink); }
+  .browser .bar { background: #eef1f5; padding: 9px 12px; display: flex; gap: 6px; align-items: center; }
+  .browser .bar i { width: 10px; height: 10px; border-radius: 50%; background: #d4dbe2; display: inline-block; }
+  .browser .bar .url { flex: 1; background: #fff; border-radius: 6px; font-size: 10.5px; color: var(--soft);
+                       padding: 3px 10px; margin-left: 8px; font-style: normal; }
+  .browser .body { display: flex; min-height: 250px; }
+  .browser .side { background: var(--navy); width: 130px; padding: 12px 10px; color: #b7c6d6; font-size: 10.5px; }
+  .browser .side div { padding: 6px 8px; border-radius: 6px; margin-bottom: 2px; }
+  .browser .side div.on { background: rgba(255,255,255,.14); color: #fff; font-weight: 700; }
+  .browser .main { flex: 1; padding: 14px; }
+  .browser .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
+  .kpi { flex: 1; border: 1px solid var(--line); border-left: 4px solid var(--green); border-radius: 8px;
+         padding: 8px 10px; }
+  .kpi b { font-size: 15px; display: block; }
+  .kpi span { font-size: 9.5px; color: var(--soft); text-transform: uppercase; letter-spacing: .4px; }
+  .rowline { height: 10px; border-radius: 5px; background: #eef1f5; margin: 8px 0; }
+  .rowline.w60 { width: 60%; } .rowline.w80 { width: 80%; }
+  .ampel { display: flex; gap: 8px; margin-top: 12px; }
+  .ampel i { flex: 1; height: 38px; border-radius: 8px; font-size: 10px; font-weight: 700; font-style: normal;
+             display: flex; align-items: center; justify-content: center; }
+  .ampel .g { background: var(--green-soft); color: var(--green); }
+  .ampel .y { background: #fff5df; color: #8a6d1a; }
+  .ampel .r { background: #fdecea; color: #c0392b; }
+
+  .phone { position: absolute; right: -8px; bottom: -34px; width: 205px; background: #fff; color: var(--ink);
+           border-radius: 26px; box-shadow: 0 26px 60px rgba(0,0,0,.45); border: 7px solid #0d1f30;
+           overflow: hidden; }
+  .phone .ph-head { background: var(--bg); padding: 12px 12px 8px; }
+  .phone .ph-firm { font-size: 8.5px; font-weight: 800; color: var(--navy2); text-transform: uppercase; letter-spacing: .5px; }
+  .phone .ph-title { font-size: 13px; font-weight: 800; }
+  .phone .ph-badge { display: inline-block; background: #fff5df; color: #8a6d1a; font-size: 8.5px; font-weight: 700;
+                     border-radius: 8px; padding: 2px 8px; margin-top: 5px; }
+  .phone .ph-body { padding: 10px 12px 14px; }
+  .phone .ph-sum { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; color: var(--mut); }
+  .phone .ph-sum.total { font-weight: 800; color: var(--green); font-size: 13px; border-top: 1.5px solid var(--line);
+                         margin-top: 4px; padding-top: 6px; }
+  .phone .ph-sig { border: 1.5px dashed #b8c4d0; border-radius: 8px; height: 46px; margin-top: 10px; position: relative; }
+  .phone .ph-sig svg { position: absolute; inset: 4px; }
+  .phone .ph-btn { background: var(--green); color: #fff; text-align: center; font-size: 11px; font-weight: 800;
+                   border-radius: 8px; padding: 9px; margin-top: 10px; }
+
+  /* ---------- Sections ---------- */
+  section { padding: 76px 0; }
+  section.alt { background: #fff; }
+  .sec-head { text-align: center; max-width: 640px; margin: 0 auto 46px; }
+  .sec-head .tag { color: var(--green); font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  h2 { font-size: clamp(24px, 3.2vw, 34px); letter-spacing: -.4px; margin: 8px 0 10px; }
+  .sec-head p { color: var(--mut); font-size: 16px; }
+
+  .pains { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .pain { background: var(--card); border-radius: var(--r); padding: 22px; box-shadow: var(--shadow); }
+  .pain .emoji { font-size: 26px; }
+  .pain b { display: block; margin: 8px 0 4px; font-size: 15.5px; }
+  .pain p { color: var(--mut); font-size: 13.5px; }
+
+  .mods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .mod { background: var(--card); border: 1.5px solid var(--line); border-radius: var(--r); padding: 24px; }
+  .mod:hover { border-color: var(--navy2); }
+  .mod .ic { width: 44px; height: 44px; border-radius: 11px; background: var(--green-soft); font-size: 21px;
+             display: flex; align-items: center; justify-content: center; }
+  .mod h3 { font-size: 16.5px; margin: 12px 0 6px; }
+  .mod p { color: var(--mut); font-size: 13.5px; }
+  .mod ul { margin: 10px 0 0 0; padding: 0; list-style: none; }
+  .mod li { font-size: 12.5px; color: var(--mut); padding: 2.5px 0 2.5px 20px; position: relative; }
+  .mod li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 800; }
+
+  .hl { background: linear-gradient(150deg, var(--navy) 0%, var(--navy2) 100%); border-radius: 20px;
+        color: #fff; padding: 44px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 36px;
+        align-items: center; margin-top: 22px; }
+  .hl h3 { font-size: 24px; margin-bottom: 10px; }
+  .hl p { color: #c8d6e4; font-size: 15px; }
+  .hl .steps { margin-top: 18px; display: grid; gap: 12px; }
+  .hl .step { display: flex; gap: 12px; align-items: flex-start; }
+  .hl .num { min-width: 28px; height: 28px; border-radius: 50%; background: var(--wa); color: #06341a;
+             font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .hl .step b { display: block; font-size: 14.5px; }
+  .hl .step span { font-size: 13px; color: #9fb3c8; }
+
+  .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: step; }
+  .how .h { background: var(--card); border-radius: var(--r); padding: 26px; box-shadow: var(--shadow);
+            position: relative; }
+  .how .h::before { counter-increment: step; content: counter(step); position: absolute; top: -16px; left: 22px;
+                    width: 34px; height: 34px; border-radius: 50%; background: var(--navy2); color: #fff;
+                    display: flex; align-items: center; justify-content: center; font-weight: 800; }
+  .how b { display: block; margin: 8px 0 6px; font-size: 16px; }
+  .how p { color: var(--mut); font-size: 13.5px; }
+
+  /* ---------- Preise ---------- */
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
+  .plan { background: var(--card); border: 1.5px solid var(--line); border-radius: 18px; padding: 30px 26px;
+          display: flex; flex-direction: column; }
+  .plan.hot { border: 2.5px solid var(--green); position: relative; box-shadow: var(--shadow); }
+  .plan.hot .flag { position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+                    background: var(--green); color: #fff; font-size: 11.5px; font-weight: 800;
+                    padding: 4px 14px; border-radius: 12px; white-space: nowrap; }
+  .plan h3 { font-size: 17px; }
+  .plan .price { margin: 12px 0 2px; }
+  .plan .price b { font-size: 40px; letter-spacing: -1px; }
+  .plan .price span { color: var(--mut); font-size: 14px; }
+  .plan .per { color: var(--soft); font-size: 12.5px; margin-bottom: 16px; }
+  .plan ul { list-style: none; margin: 0 0 22px; flex: 1; }
+  .plan li { padding: 5px 0 5px 24px; position: relative; font-size: 13.5px; color: var(--ink); }
+  .plan li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 800; }
+  .plan li.no { color: var(--soft); }
+  .plan li.no::before { content: "–"; color: #c3ccd5; }
+  .pricenote { text-align: center; color: var(--mut); font-size: 13.5px; margin-top: 22px; }
+
+  /* ---------- FAQ ---------- */
+  .faq { max-width: 760px; margin: 0 auto; }
+  details { background: var(--card); border: 1.5px solid var(--line); border-radius: 12px;
+            padding: 0 20px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 700; font-size: 15px; padding: 16px 0; list-style: none;
+            display: flex; justify-content: space-between; align-items: center; }
+  summary::after { content: "+"; font-size: 20px; color: var(--soft); }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--mut); font-size: 14px; padding-bottom: 16px; }
+
+  /* ---------- Demo-Formular ---------- */
+  .demo-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 44px; align-items: start; }
+  .demo-info h2 { margin-bottom: 12px; }
+  .demo-info p { color: var(--mut); font-size: 15px; margin-bottom: 16px; }
+  .demo-info ul { list-style: none; }
+  .demo-info li { padding: 6px 0 6px 28px; position: relative; font-size: 14.5px; }
+  .demo-info li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; font-size: 16px; }
+  .form { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 30px; }
+  .form label { display: block; font-size: 12.5px; font-weight: 700; color: #40506a; margin: 14px 0 5px; }
+  .form input, .form textarea { width: 100%; padding: 12px; border: 1.5px solid #ccd6e0; border-radius: 10px;
+                                font-size: 15px; font-family: inherit; }
+  .form input:focus, .form textarea:focus { outline: 2px solid var(--blue); border-color: var(--blue); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .consent { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; font-size: 12.5px;
+             color: var(--mut); line-height: 1.5; }
+  .consent input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+  .form .btn { width: 100%; margin-top: 18px; }
+  .form .err { color: #c0392b; font-weight: 700; font-size: 13px; min-height: 18px; margin-top: 10px; }
+  .success-box { background: var(--green-soft); border-radius: 14px; padding: 22px; }
+  .success-box h3 { color: var(--green); margin-bottom: 8px; }
+  .success-box .cred { background: #fff; border-radius: 10px; padding: 12px 14px; font-size: 14px; margin: 12px 0; }
+  .success-box .cred b { font-family: ui-monospace, monospace; }
+
+  /* ---------- Footer ---------- */
+  footer { background: var(--navy); color: #9fb3c8; padding: 46px 0 30px; font-size: 13.5px; }
+  footer .cols { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+  footer h4 { color: #fff; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 10px; }
+  footer a { color: #c8d6e4; display: block; padding: 3px 0; }
+  footer a:hover { color: #fff; }
+  footer .fin { border-top: 1px solid rgba(255,255,255,.12); padding-top: 18px; display: flex;
+                justify-content: space-between; flex-wrap: wrap; gap: 10px; font-size: 12.5px; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 900px) {
+    .hero .wrap, .hl, .demo-grid { grid-template-columns: 1fr; }
+    .pains, .mods, .how, .plans { grid-template-columns: 1fr; }
+    /* Grid-/Flex-Kinder dürfen nie breiter als der Viewport werden */
+    .hero .wrap > *, .hl > *, .demo-grid > * { min-width: 0; }
+    nav .links { display: none; }
+    .mockups { min-height: 0; margin-top: 8px; }
+    .browser .side { width: 96px; }
+    .browser .main { min-width: 0; }
+    .kpis { flex-wrap: wrap; }
+    .phone { position: static; margin: -30px auto 0; display: block; }
+    footer .cols { grid-template-columns: 1fr; }
+    section { padding: 54px 0; }
+  }
+  @media (max-width: 480px) {
+    nav .wrap { gap: 10px; }
+    nav .cta .ghost { display: none; }      /* „Anmelden" steckt auch im Footer */
+    .btn { padding: 10px 14px; font-size: 13px; }
+    .btn.big { padding: 13px 18px; font-size: 14.5px; }
+    header.hero { padding: 46px 0 60px; }
+    .hl { padding: 26px 20px; }
+    .row2 { grid-template-columns: 1fr; }
+    .form { padding: 22px 18px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="/"><span class="mark">W</span>WERKOS</a>
+    <div class="links">
+      <a href="#funktionen">Funktionen</a>
+      <a href="#preise">Preise</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="cta">
+      <a class="btn ghost" href="/app">Anmelden</a>
+      <a class="btn primary" href="#demo">Kostenlos testen</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <span class="kicker">🇩🇪 Made & gehostet in Deutschland · DSGVO & GoBD</span>
+      <h1>Dein ganzer Betrieb <em>in einer App.</em></h1>
+      <p class="sub">Zeiten, Aufträge, Angebote mit digitaler Unterschrift, Rechnungen und Einsatzplanung —
+        gebaut für Handwerks- und Kleinstbetriebe mit 1–9 Mitarbeitern.
+        <b style="color:#fff;">Ein Preis pro Betrieb. Egal wie viele Mitarbeiter.</b></p>
+      <div class="actions">
+        <a class="btn primary big" href="#demo">14 Tage kostenlos testen</a>
+        <a class="btn ghost big" href="#funktionen">Funktionen ansehen</a>
+      </div>
+      <div class="trust">
+        <span>✓ Ohne Zahlungsdaten testen</span>
+        <span>✓ Monatlich kündbar</span>
+        <span>✓ Mitarbeiter ohne Passwort — per Link/QR</span>
+      </div>
+    </div>
+    <div class="mockups">
+      <div class="browser">
+        <div class="bar"><i></i><i></i><i></i><em class="url">app.werkos.de — Muster Bau GmbH</em></div>
+        <div class="body">
+          <div class="side">
+            <div class="on">🏠 Übersicht</div><div>📨 Angebote</div><div>📁 Projekte</div>
+            <div>📅 Kalender</div><div>👥 Mitarbeiter</div><div>🧾 Rechnungen</div>
+          </div>
+          <div class="main">
+            <div class="kpis">
+              <div class="kpi"><span>Umsatz Monat</span><b>8.272 €</b></div>
+              <div class="kpi"><span>Offene Angebote</span><b>3</b></div>
+              <div class="kpi" style="border-left-color:#f39c12;"><span>Überstunden</span><b>12,5 h</b></div>
+            </div>
+            <div class="rowline w80"></div><div class="rowline"></div><div class="rowline w60"></div>
+            <div class="ampel"><i class="g">Bad Müller ✓ im Plan</i><i class="y">Dach Schulz 85 %</i><i class="r">Anbau Klein ⚠</i></div>
+          </div>
+        </div>
+      </div>
+      <div class="phone">
+        <div class="ph-head">
+          <div class="ph-firm">Muster Bau GmbH</div>
+          <div class="ph-title">Angebot AN-2026-0099</div>
+          <span class="ph-badge">⏳ Wartet auf Ihre Entscheidung</span>
+        </div>
+        <div class="ph-body">
+          <div class="ph-sum"><span>Netto</span><span>4.200,00 €</span></div>
+          <div class="ph-sum"><span>USt 19 %</span><span>798,00 €</span></div>
+          <div class="ph-sum total"><span>Gesamt</span><span>4.998,00 €</span></div>
+          <div class="ph-sig">
+            <svg viewBox="0 0 180 38"><path d="M8 28 C 22 8, 34 34, 48 20 S 74 6, 88 22 S 116 34, 130 16 S 158 12, 172 24"
+              fill="none" stroke="#16324e" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="ph-btn">✅ Verbindlich annehmen</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">Das Problem kennst du</span>
+      <h2>Abends Büro statt Feierabend?</h2>
+      <p>Zettelwirtschaft, WhatsApp-Chaos und Excel-Listen kosten dich jede Woche Stunden — und beim Jahresabschluss weißt du nicht, welcher Auftrag sich gelohnt hat.</p>
+    </div>
+    <div class="pains">
+      <div class="pain"><span class="emoji">🧾</span><b>Stundenzettel-Stapel</b>
+        <p>Papierzettel einsammeln, entziffern, abtippen — jeden Monat aufs Neue. Mit WERKOS stempelt dein Team per Handy oder QR-Code, ganz ohne eigene Accounts.</p></div>
+      <div class="pain"><span class="emoji">📨</span><b>Angebote versanden</b>
+        <p>PDF per Mail, dann Funkstille. Mit WERKOS schickst du einen Link per WhatsApp — der Kunde unterschreibt direkt auf dem Handy und du hast den Auftrag schwarz auf weiß.</p></div>
+      <div class="pain"><span class="emoji">❓</span><b>Blindflug bei den Kosten</b>
+        <p>Verdiene ich an diesem Auftrag? WERKOS rechnet Stunden und Material live zusammen — die Auftrags-Ampel warnt, bevor es teuer wird.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="funktionen">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">Funktionen</span>
+      <h2>5 Module. Ein System. Null Schulung.</h2>
+      <p>Starte mit dem, was dir heute weh tut — und schalte weitere Module frei, wenn du sie brauchst. Alles arbeitet auf einer Datenbasis zusammen: nichts wird doppelt eingegeben.</p>
+    </div>
+    <div class="mods">
+      <div class="mod"><div class="ic">⏱</div><h3>Zeiten &amp; Team</h3>
+        <p>Arbeitszeiten ohne Verhaltensänderung erfassen.</p>
+        <ul><li>Stempeln per Handy oder QR-Code</li><li>Mitarbeiter, Kolonnen &amp; Berechtigungen</li><li>Wochen- &amp; Monatsauswertungen</li><li>Ticket-System fürs Team</li></ul></div>
+      <div class="mod"><div class="ic">📁</div><h3>Aufträge &amp; Baustelle</h3>
+        <p>Alles zu jedem Auftrag an einem Ort.</p>
+        <ul><li>Bautagebuch &amp; Berichte mit Fotos</li><li>Mängelverwaltung mit Fristen</li><li>Leistungsverzeichnisse</li><li>Controlling-Cockpit: Plan vs. Ist</li></ul></div>
+      <div class="mod"><div class="ic">💶</div><h3>Angebote &amp; Rechnungen</h3>
+        <p>Vom Angebot zum bezahlten Geld — ohne Word.</p>
+        <ul><li>Kunden-Link mit digitaler Unterschrift</li><li>Angebot → Projekt → Rechnung per Klick</li><li>Mahnwesen &amp; offene Posten</li><li>PDF mit deinem Briefkopf</li></ul></div>
+      <div class="mod"><div class="ic">📅</div><h3>Einsatzplanung</h3>
+        <p>Wer arbeitet wann wo — per Drag &amp; Drop.</p>
+        <ul><li>Plantafel für Mitarbeiter &amp; Aufträge</li><li>Urlaub &amp; Abwesenheiten</li><li>Plan direkt aufs Handy vom Team</li></ul></div>
+      <div class="mod"><div class="ic">🛒</div><h3>Einkauf &amp; Lager</h3>
+        <p>Material im Griff, Kosten im Blick.</p>
+        <ul><li>Lieferanten &amp; Bestellungen</li><li>Eingangsrechnungen zuordnen</li><li>Lager &amp; Inventur light</li></ul></div>
+      <div class="mod" style="background:var(--green-soft); border-color:#b5e0c5;"><div class="ic" style="background:#fff;">🔒</div><h3>Immer inklusive</h3>
+        <p>Bei jedem Tarif automatisch dabei.</p>
+        <ul><li>Daten-Hosting in Deutschland</li><li>GoBD-Audit-Trail &amp; Versionierung</li><li>DSGVO-Export per Klick</li><li>Steuerberater-Zugang (lesend)</li><li>Tägliche Backups</li></ul></div>
+    </div>
+
+    <div class="hl">
+      <div>
+        <h3>📲 Der Angebots-Turbo: Link statt PDF-Pingpong</h3>
+        <p>Dein Kunde bekommt keinen Anhang, den er ausdrucken muss — sondern einen Link, der auf jedem Handy funktioniert.</p>
+        <div class="steps">
+          <div class="step"><span class="num">1</span><div><b>Angebot per WhatsApp senden</b><span>Ein Klick im Angebot erzeugt den Link — teilen per WhatsApp, QR oder kopieren.</span></div></div>
+          <div class="step"><span class="num">2</span><div><b>Kunde unterschreibt auf dem Handy</b><span>Angebot ansehen, mit dem Finger unterschreiben, verbindlich annehmen. Fertig.</span></div></div>
+          <div class="step"><span class="num">3</span><div><b>Auftrag landet automatisch bei dir</b><span>Status springt auf „Angenommen" — mit Name, Zeitstempel und Unterschrift, revisionssicher dokumentiert.</span></div></div>
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <div style="display:inline-block; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:16px; padding:26px 30px;">
+          <div style="font-size:44px;">✍️</div>
+          <div style="font-weight:800; font-size:18px; margin-top:8px;">Rechtsverbindliche Annahme</div>
+          <div style="color:#9fb3c8; font-size:13px; margin-top:6px; max-width:260px;">Unterschrift, Name, Zeitstempel und Angebots-Stand werden unveränderbar gespeichert — GoBD-konform.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">So einfach geht's</span>
+      <h2>In 10 Minuten startklar — versprochen.</h2>
+    </div>
+    <div class="how">
+      <div class="h"><b>Betrieb registrieren</b><p>Firmenname, E-Mail, Passwort — mehr braucht es nicht. Keine Zahlungsdaten, keine Installation: WERKOS läuft im Browser und als App auf jedem Gerät.</p></div>
+      <div class="h"><b>Team per Link einladen</b><p>Mitarbeiter bekommen einen Link oder QR-Code — kein Passwort, kein App-Store, kein Account-Stress. Der Steuerberater bekommt auf Wunsch Lesezugriff.</p></div>
+      <div class="h"><b>Loslegen &amp; wachsen</b><p>Starte mit einem Modul und schalte weitere per Tarifwechsel frei — deine Daten wachsen einfach mit, nichts muss neu eingegeben werden.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="preise">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">Preise</span>
+      <h2>Ein Preis pro Betrieb. Niemals pro Nutzer.</h2>
+      <p>Ob 2 oder 15 Leute — dein Preis bleibt gleich. Monatlich kündbar, Preise zzgl. USt.</p>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <h3>START</h3>
+        <div class="price"><b>15 €</b><span> / Monat</span></div>
+        <div class="per">pauschal pro Betrieb · bis 5 Mitarbeiter · 2 GB</div>
+        <ul>
+          <li>Zeiten &amp; Team</li>
+          <li class="no">Aufträge &amp; Baustelle</li>
+          <li class="no">Angebote &amp; Rechnungen</li>
+          <li class="no">Einsatzplanung</li>
+          <li class="no">Einkauf &amp; Lager</li>
+          <li>GoBD, DSGVO-Export, Backups</li>
+        </ul>
+        <a class="btn navy" href="#demo">Kostenlos testen</a>
+      </div>
+      <div class="plan hot">
+        <span class="flag">⭐ Beliebtester Tarif</span>
+        <h3>BETRIEB</h3>
+        <div class="price"><b>35 €</b><span> / Monat</span></div>
+        <div class="per">pauschal pro Betrieb · bis 10 Mitarbeiter · 10 GB</div>
+        <ul>
+          <li>Zeiten &amp; Team</li>
+          <li>Aufträge &amp; Baustelle</li>
+          <li><b>Angebote mit Kunden-Unterschrift</b> &amp; Rechnungen</li>
+          <li class="no">Einsatzplanung</li>
+          <li class="no">Einkauf &amp; Lager</li>
+          <li>GoBD, DSGVO-Export, Backups</li>
+        </ul>
+        <a class="btn primary" href="#demo">Kostenlos testen</a>
+      </div>
+      <div class="plan">
+        <h3>BETRIEB PLUS</h3>
+        <div class="price"><b>59 €</b><span> / Monat</span></div>
+        <div class="per">pauschal pro Betrieb · bis 15 Mitarbeiter · 25 GB</div>
+        <ul>
+          <li>Alle 5 Module</li>
+          <li>Zeiten, Aufträge, Angebote/Rechnungen</li>
+          <li>Einsatzplanung</li>
+          <li>Einkauf &amp; Lager</li>
+          <li>Steuerberater-Zugang</li>
+          <li>GoBD, DSGVO-Export, Backups</li>
+        </ul>
+        <a class="btn navy" href="#demo">Kostenlos testen</a>
+      </div>
+    </div>
+    <p class="pricenote">Jeder Tarif beginnt mit <b>14 Tagen Testphase mit allen Modulen</b> — ohne Zahlungsdaten, endet automatisch.
+      Der Tarif schaltet die Module sofort frei; Wechsel jederzeit zum Monatsende. Abrechnung bequem auf Rechnung / SEPA.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">FAQ</span>
+      <h2>Häufige Fragen</h2>
+    </div>
+    <div class="faq">
+      <details><summary>Wo liegen meine Daten?</summary>
+        <p>Ausschließlich auf Servern in Deutschland. Jeder Betrieb ist ein eigener, strikt getrennter Mandant. Du kannst deine kompletten Daten jederzeit als ZIP exportieren — auch nach einer Kündigung bleibt der Export möglich. Kein Lock-in.</p></details>
+      <details><summary>Brauchen meine Mitarbeiter eigene Accounts oder Passwörter?</summary>
+        <p>Nein. Du erzeugst einen Einladungs-Link oder QR-Code, dein Mitarbeiter tippt seinen Namen ein — fertig. Kein Passwort, kein App-Store-Download, keine Schulung.</p></details>
+      <details><summary>Ist die Angebots-Annahme per Unterschrift rechtsgültig?</summary>
+        <p>Für typische Handwerksaufträge ja: Werkverträge sind formfrei, die elektronische Annahme mit Unterschrift, Name, Zeitstempel und unverändertem Angebots-Stand ist eine dokumentierte Willenserklärung. Bei besonderen Vertragsarten (z. B. Verbraucherbauverträge) gelten Formvorschriften — Details in unserer Datenschutzerklärung bzw. beim Anwalt deines Vertrauens.</p></details>
+      <details><summary>Was heißt GoBD-konform konkret?</summary>
+        <p>Jede Speicherung erzeugt eine unveränderliche Revision, Belege sind versioniert, und ein Audit-Trail mit Hash-Kette protokolliert alle Änderungen manipulationssicher. Für Betriebsprüfung oder Steuerberater gibt es den maschinenlesbaren Komplett-Export und einen Lese-Zugang.</p></details>
+      <details><summary>Kann ich meine bestehenden Daten mitnehmen?</summary>
+        <p>Ja. Nutzer der Einzelplatz-Version spielen ihr Voll-Backup per Klick ein. Aus anderen Systemen helfen Excel-Importe — sprich uns einfach an.</p></details>
+      <details><summary>Wie kündige ich?</summary>
+        <p>Monatlich, ohne Frist-Tricks, direkt in der App. Danach kannst du deine Daten weiterhin exportieren; auf Wunsch löschen wir alles endgültig (30 Tage Karenz, dann unwiderruflich).</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="demo">
+  <div class="wrap">
+    <div class="demo-grid">
+      <div class="demo-info">
+        <span class="tag" style="color:var(--green); font-weight:800; font-size:13px; text-transform:uppercase; letter-spacing:1px;">Demo-Zugang</span>
+        <h2>Teste WERKOS jetzt — mit deinem eigenen Betrieb.</h2>
+        <p>Wir legen dir sofort einen vollwertigen Testbetrieb an: <b>14 Tage, alle 5 Module, mit Beispieldaten zum Ausprobieren</b> — ohne Zahlungsdaten und ohne Verpflichtung.</p>
+        <ul>
+          <li>Sofort loslegen — Zugang wird in Sekunden erstellt</li>
+          <li>Beispieldaten zeigen dir alle Funktionen</li>
+          <li>Eigene Daten anlegen &amp; Team einladen erlaubt</li>
+          <li>Endet automatisch — wird nie ungefragt kostenpflichtig</li>
+        </ul>
+      </div>
+      <div class="form" id="demoForm">
+        <h3 style="font-size:18px;">Demo-Zugang anlegen</h3>
+        <div class="row2">
+          <div><label>Dein Name *</label><input id="dName" autocomplete="name" placeholder="Max Mustermann"></div>
+          <div><label>Firma *</label><input id="dCompany" autocomplete="organization" placeholder="Mustermann GmbH"></div>
+        </div>
+        <div class="row2">
+          <div><label>E-Mail *</label><input id="dEmail" type="email" autocomplete="email" placeholder="max@mustermann.de"></div>
+          <div><label>Telefon (optional)</label><input id="dPhone" type="tel" autocomplete="tel" placeholder="+49 …"></div>
+        </div>
+        <label>Was ist deine größte Baustelle im Büro? (optional)</label>
+        <textarea id="dMessage" rows="2" placeholder="z. B. Stundenzettel, Angebote schreiben, Planung …"></textarea>
+        <div class="consent">
+          <input type="checkbox" id="dConsent">
+          <span>Ich willige ein, dass meine Angaben zur Bereitstellung des Demo-Zugangs und zur Kontaktaufnahme verarbeitet werden.
+          Details in der <a href="/datenschutz" target="_blank">Datenschutzerklärung</a>. Die Einwilligung kann ich jederzeit widerrufen. *</span>
+        </div>
+        <button class="btn primary big" id="dGo">🚀 Demo-Zugang jetzt anlegen</button>
+        <div class="err" id="dErr"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="logo" href="/" style="margin-bottom:10px;"><span class="mark">W</span>WERKOS</a>
+        <p style="max-width:330px; margin-top:10px;">Das modulare Betriebssystem für Kleinstbetriebe.
+        Entwickelt für Handwerk &amp; Bau — gehostet und betrieben in Deutschland.</p>
+      </div>
+      <div>
+        <h4>Produkt</h4>
+        <a href="#funktionen">Funktionen</a>
+        <a href="#preise">Preise</a>
+        <a href="#faq">FAQ</a>
+        <a href="/app">Anmelden</a>
+      </div>
+      <div>
+        <h4>Rechtliches</h4>
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
+        <a href="mailto:kontakt@werkos.example.de">kontakt@werkos.example.de</a>
+      </div>
+    </div>
+    <div class="fin">
+      <span>© 2026 WERKOS · Alle Preise zzgl. gesetzlicher USt.</span>
+      <span>🇩🇪 Server &amp; Support in Deutschland</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var btn = document.getElementById('dGo');
+  var errEl = document.getElementById('dErr');
+  btn.onclick = function () {
+    errEl.textContent = '';
+    if (!document.getElementById('dConsent').checked) {
+      errEl.textContent = 'Bitte der Datenverarbeitung zustimmen (DSGVO).';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '⏳ Zugang wird angelegt …';
+    fetch('/api/public/demo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('dName').value,
+        company: document.getElementById('dCompany').value,
+        email: document.getElementById('dEmail').value,
+        phone: document.getElementById('dPhone').value,
+        message: document.getElementById('dMessage').value,
+        consent: true
+      })
+    }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .then(function (r) {
+        if (r.s === 201) {
+          // Session speichern → /app öffnet direkt eingeloggt
+          try { localStorage.setItem('werkos_session_v1', JSON.stringify(r.j)); } catch (e) {}
+          var f = document.getElementById('demoForm');
+          f.innerHTML = '<div class="success-box">' +
+            '<h3>🎉 Dein Testbetrieb ist bereit!</h3>' +
+            '<p style="font-size:14px;">Zugang für <b>' + (r.j.tenant && r.j.tenant.name ? r.j.tenant.name.replace(/</g, '&lt;') : 'deinen Betrieb') + '</b> wurde angelegt. Deine Zugangsdaten für spätere Anmeldungen — bitte notieren:</p>' +
+            '<div class="cred">E-Mail: <b>' + (r.j.user.email || '').replace(/</g, '&lt;') + '</b><br>Passwort: <b>' + (r.j.password || '').replace(/</g, '&lt;') + '</b></div>' +
+            '<a class="btn primary big" href="/app" style="display:block;">→ Jetzt zur App (du bist schon angemeldet)</a>' +
+            '<p style="font-size:12px; color:#557; margin-top:10px;">14 Tage kostenlos mit allen Modulen. Endet automatisch — keine Kündigung nötig.</p>' +
+            '</div>';
+        } else {
+          btn.disabled = false;
+          btn.textContent = '🚀 Demo-Zugang jetzt anlegen';
+          var map = {
+            'consent-required': 'Bitte der Datenverarbeitung zustimmen (DSGVO).',
+            'invalid-email': 'Bitte eine gültige E-Mail angeben.',
+            'invalid-name': 'Bitte deinen Namen angeben.',
+            'invalid-company': 'Bitte den Firmennamen angeben.',
+            'email-exists': 'Diese E-Mail hat bereits einen Zugang — bitte in der App anmelden.',
+            'rate-limited': 'Zu viele Anfragen — bitte in einer Stunde erneut versuchen.'
+          };
+          errEl.textContent = map[r.j.error] || ('Fehler: ' + (r.j.error || r.s));
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        btn.textContent = '🚀 Demo-Zugang jetzt anlegen';
+        errEl.textContent = 'Netzwerkfehler — bitte erneut versuchen.';
+      });
+  };
+})();
+</script>
+</body>
+</html>

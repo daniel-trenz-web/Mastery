@@ -498,11 +498,64 @@ test('Angebots-Link: Widerruf und Modul-Gate', async () => {
   assert.equal(bogus.status, 404);
 });
 
-test('Statische Auslieferung: PWA und Bibliotheken erreichbar', async () => {
-  const r = await fetch(BASE + '/');
+test('Demo-Zugang: Kontaktdaten + DSGVO-Consent → Testbetrieb + Lead', async () => {
+  // Ohne Consent → abgelehnt, kein Account
+  const noConsent = await api('POST', '/api/public/demo', {
+    body: { name: 'Lead Person', company: 'Lead GmbH', email: 'lead@test.de', consent: false },
+  });
+  assert.equal(noConsent.status, 400);
+  assert.equal(noConsent.data.error, 'consent-required');
+
+  // Mit Consent → Tenant + Session + Einmal-Passwort
+  const d = await api('POST', '/api/public/demo', {
+    body: { name: 'Lead Person', company: 'Lead GmbH', email: 'lead@test.de', phone: '+49 123', message: 'Stundenzettel nerven', consent: true },
+  });
+  assert.equal(d.status, 201, JSON.stringify(d.data));
+  assert.ok(d.data.accessToken && d.data.password && d.data.password.startsWith('werkos-'));
+  assert.equal(d.data.user.role, 'owner');
+  assert.equal(d.data.tenant.plan, 'TRIAL');
+
+  // Login mit dem Einmal-Passwort funktioniert
+  const login = await api('POST', '/api/auth/login', { body: { email: 'lead@test.de', password: d.data.password } });
+  assert.equal(login.status, 200);
+
+  // Lead gespeichert mit Consent-Nachweis (Zeitpunkt + IP)
+  const leads = await api('GET', '/api/admin/leads', { headers: { 'X-Admin-Token': 'test-admin-token' } });
+  const lead = leads.data.leads.find((l) => l.email === 'lead@test.de');
+  assert.ok(lead, 'Lead muss gespeichert sein');
+  assert.ok(lead.consent_at && lead.consent_ip);
+  assert.equal(lead.message, 'Stundenzettel nerven');
+  assert.equal(lead.tenant_id, d.data.tenant.id);
+
+  // Doppelte E-Mail → Hinweis statt zweitem Account
+  const dup = await api('POST', '/api/public/demo', {
+    body: { name: 'Lead Person', company: 'Lead GmbH', email: 'lead@test.de', consent: true },
+  });
+  assert.equal(dup.status, 409);
+
+  // DSGVO: Lead per Admin löschbar
+  await api('DELETE', '/api/admin/leads/' + lead.id, { headers: { 'X-Admin-Token': 'test-admin-token' } });
+  const leads2 = await api('GET', '/api/admin/leads', { headers: { 'X-Admin-Token': 'test-admin-token' } });
+  assert.ok(!leads2.data.leads.some((l) => l.id === lead.id));
+});
+
+test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async () => {
+  // / ist jetzt die Marketing-Website
+  const site = await fetch(BASE + '/');
+  assert.equal(site.status, 200);
+  const siteHtml = await site.text();
+  assert.ok(siteHtml.includes('Dein ganzer Betrieb'), 'Startseite = Marketing-Website');
+  assert.ok(siteHtml.includes('Datenschutzerklärung'), 'Consent-Text vorhanden');
+  // Rechtsseiten
+  for (const p of ['/impressum', '/datenschutz']) {
+    const lr = await fetch(BASE + p);
+    assert.equal(lr.status, 200, p);
+  }
+  // Die PWA liegt unter /app
+  const r = await fetch(BASE + '/app');
   assert.equal(r.status, 200);
   const html = await r.text();
-  assert.ok(html.includes('<!DOCTYPE html>'));
+  assert.ok(html.includes('saas.js'), '/app = PWA');
   const lib = await fetch(BASE + '/lib/qrcode.min.js');
   assert.equal(lib.status, 200);
   const saas = await fetch(BASE + '/saas.js');
