@@ -13,6 +13,9 @@
   'use strict';
   var API = location.origin + '/api';
   var SKEY = 'werkos_session_v1';
+  // Statischer Demo-Modus (z. B. GitHub Pages): kein Backend — App läuft als
+  // Einzelplatz-Demo, Daten bleiben im Browser (localStorage/IndexedDB).
+  var STATIC = !!window.WERKOS_STATIC;
 
   function getSession() {
     try { return JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) { return null; }
@@ -172,6 +175,7 @@
   }
 
   function shareAngebot(angId) {
+    if (STATIC) { toast('🧪 Demo-Modus: Kunden-Links brauchen den WERKOS-Server (siehe Anleitung).'); return; }
     var st = window.state || {};
     var ang = (st.angebote || []).find(function (a) { return a.id === angId; });
     if (!ang) { toast('Angebot nicht gefunden.'); return; }
@@ -583,7 +587,29 @@
     logout: logout
   };
 
+  // Statischer Demo-Modus: kein Gate, kein Server — App direkt entsperren,
+  // Demo-Hinweis zeigen, sinnlose Buttons (Abmelden/interner Login) ausblenden.
+  function bootStatic() {
+    var ribbon = document.createElement('div');
+    ribbon.innerHTML = '🧪 <b>Demo-Modus</b> — alle Daten bleiben nur in diesem Browser. ' +
+      'Für echten Team-Betrieb mit Login &amp; Kunden-Links: WERKOS auf eigenem Server starten.';
+    ribbon.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147482000;background:#16324e;color:#dbe7f3;' +
+      'padding:8px 14px;font-size:12.5px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    document.body.appendChild(ribbon);
+    var tries = 0;
+    var t = setInterval(function () {
+      tries++;
+      if (tries > 100) return clearInterval(t);
+      if (!window.__appLoadedAt || typeof window.setMode !== 'function') return;
+      var lb = document.getElementById('unifiedLoginBtn'); if (lb) lb.style.display = 'none';
+      var lock = document.getElementById('lockBtn'); if (lock) lock.style.display = 'none';
+      if (window.mode === 'locked') { try { window.setMode('admin'); } catch (e) { return; } }
+      clearInterval(t);
+    }, 300);
+  }
+
   function boot() {
+    if (STATIC) { bootStatic(); return; }
     injectCss();
     var inviteMatch = location.hash.match(/[#&]invite=([A-Za-z0-9_-]+)/);
     var s = getSession();

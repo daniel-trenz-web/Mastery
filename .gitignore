@@ -6,3 +6,4 @@ deploy/backups/
 *.sqlite-wal
 *.sqlite-shm
 .DS_Store
+dist-static/
