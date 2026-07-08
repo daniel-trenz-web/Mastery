@@ -1,0 +1,45 @@
+# Veröffentlicht die statische WERKOS-Website + Browser-Demo auf GitHub Pages.
+# Die Server-Version (Multi-Mandanten-SaaS) läuft weiterhin per docker compose
+# auf einem eigenen Server — siehe docs/DEPLOYMENT.md.
+name: Website auf GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - claude/werkos-saas-platform-build-xce3o0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Statische Seite bauen
+        run: node tools/build-static-site.js
+      - name: Pages konfigurieren (aktiviert Pages beim ersten Lauf)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-static
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
