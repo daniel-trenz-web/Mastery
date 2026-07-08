@@ -85,11 +85,33 @@ Löschung mit Karenzfrist), Tarif-Gating, Path-Traversal, ZIP-Restore.
 | BETRIEB | 35 € | + Aufträge, + Angebote/Rechnungen |
 | BETRIEB PLUS | 59 € | alle 5 |
 
-**Freischaltung:** Der Tarifabschluss schaltet die Module **automatisch** frei
-(Navigation der App passt sich sofort an). Zusätzlich kann der **Betreiber**
-in der Konsole unter `/admin` (Zugriff via `WERKOS_ADMIN_TOKEN`) pro Mandant
-einzelne Module übersteuern — freischalten oder sperren, unabhängig vom Tarif.
-Zahlungsabwicklung (Stripe SEPA) dockt an `POST /api/billing/webhook` an.
+**Kaufabschluss (Full Sales Cycle):**
+
+1. **Self-Service:** Im Konto-Widget Tarif wählen → Checkout mit Rechnungsdaten
+   (Firma, Adresse, USt-ID, Zahlweise Rechnung/SEPA) + verbindlicher
+   Abo-/AVV-Zustimmung → Abo aktiv, Module sofort frei. Kündigung jederzeit
+   im Widget (Passwort-bestätigt); danach Lese-Modus + Export (kein Lock-in).
+2. **Vertrieb:** In der Admin-Zentrale (`/admin`) ein **persönliches
+   Abo-Angebot** erstellen (Tarif, individueller Monatspreis, persönliche
+   Nachricht) → Link per WhatsApp/E-Mail an den beratenen Interessenten →
+   der schließt unter `/abo#<token>` **online verbindlich ab** (doppelter
+   Consent: Abo + DSGVO) → Betrieb + aktives Abo entstehen automatisch,
+   Kunde ist sofort eingeloggt.
+3. **Demo:** Website-Formular mit DSGVO-Consent → persönlicher Testzugang
+   (14 Tage, alle Module) + Lead mit Consent-Nachweis.
+
+Jeder Kauf ist ein `subscriptions`-Datensatz mit Preis-Snapshot (Sonderpreise,
+Bestandsschutz) und landet mit AGB-Nachweis im GoBD-Audit-Trail. Automatische
+Abbuchung (Stripe SEPA) dockt an `POST /api/billing/webhook` an — bis dahin:
+Kauf auf Rechnung (B2B-Standard).
+
+**Admin-Zentrale (`/admin`, Zugriff via `WERKOS_ADMIN_TOKEN`):** KPIs
+(Betriebe, zahlende Kunden, **MRR**, Trials, offene Angebote, Leads),
+Mandanten-Verwaltung (Tarif setzen, Module übersteuern, **Testphase
+verlängern**, **sperren/entsperren** bei Zahlungsverzug — Lesen/Export bleibt),
+Mandanten-Detail (Nutzer, Abo inkl. Rechnungsadresse, letzte Aktivität),
+Vertriebs-Angebote (erstellen/widerrufen/Status) und Lead-Verwaltung
+(Consent-Nachweis, DSGVO-Löschung).
 
 ## Angebots-Links (Kunde unterschreibt per Handy)
 

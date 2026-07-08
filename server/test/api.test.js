@@ -14,6 +14,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'werkos-test-'));
 process.env.WERKOS_DATA_DIR = TMP;
 process.env.WERKOS_ADMIN_TOKEN = 'test-admin-token';
 process.env.WERKOS_REGISTER_LIMIT = '1000'; // Tests registrieren viele Mandanten
+process.env.WERKOS_LOGIN_IP_LIMIT = '1000'; // Pro-E-Mail-Limit bleibt aktiv (Brute-Force-Test)
 
 const { createServer } = require('../src/server');
 const dbm = require('../src/db');
@@ -40,6 +41,19 @@ async function api(method, p, { body, token, headers, raw } = {}) {
   const ct = r.headers.get('content-type') || '';
   const data = ct.includes('json') ? await r.json().catch(() => null) : Buffer.from(await r.arrayBuffer());
   return { status: r.status, data, headers: r.headers };
+}
+
+// Kaufabschluss-Helfer: Tarif mit Rechnungsdaten + AGB-Zustimmung aktivieren
+async function checkout(token, plan) {
+  const r = await api('POST', '/api/billing/checkout', {
+    token,
+    body: {
+      plan, acceptTerms: true,
+      billing: { company: 'Test GmbH', address: 'Teststr. 1', zip: '12345', city: 'Berlin', email: 'billing@test.de', payMethod: 'invoice' },
+    },
+  });
+  assert.equal(r.status, 201, 'checkout ' + plan + ': ' + JSON.stringify(r.data));
+  return r;
 }
 
 async function register(company, email) {
@@ -308,14 +322,13 @@ test('Tarif-Gating: abgelaufene Testphase sperrt Schreiben, Tarifwahl entsperrt'
   assert.equal(ex.status, 200);
 
   // Tarif wählen → Schreiben wieder möglich, Module gemäß Tarif
-  const cp = await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'BETRIEB' } });
-  assert.equal(cp.status, 200);
+  const cp = await checkout(s.accessToken, 'BETRIEB');
   assert.deepEqual(cp.data.tenant.modules, ['zeiten', 'auftraege', 'geld']);
   const w2 = await api('POST', '/api/t/state', { token: s.accessToken, raw: '{"x":1}' });
   assert.equal(w2.status, 200);
 
   // Ungültiger Tarif abgelehnt
-  const bad = await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'TRIAL' } });
+  const bad = await api('POST', '/api/billing/checkout', { token: s.accessToken, body: { plan: 'TRIAL', acceptTerms: true } });
   assert.equal(bad.status, 400);
 });
 
@@ -385,7 +398,7 @@ test('Module: Tarif schaltet automatisch frei, Host-Override gewinnt', async () 
   assert.ok(acc.data.tenant.moduleCatalog.zeiten.appModules.includes('employees'));
 
   // START: nur zeiten (automatisch mit Tarifwahl)
-  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'START' } });
+  await checkout(s.accessToken, 'START');
   acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
 
@@ -398,7 +411,7 @@ test('Module: Tarif schaltet automatisch frei, Host-Override gewinnt', async () 
   assert.deepEqual(ov.data.effective_modules, ['geld'], 'Override: +geld, -zeiten, unbekannte Keys ignoriert');
 
   // Upgrade auf BETRIEB: Tarif-Module + Overrides kombiniert
-  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'BETRIEB' } });
+  await checkout(s.accessToken, 'BETRIEB');
   acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.deepEqual(acc.data.tenant.modules.sort(), ['auftraege', 'geld'], 'zeiten bleibt per Override gesperrt');
 
@@ -481,13 +494,13 @@ test('Angebots-Link: Widerruf und Modul-Gate', async () => {
   assert.equal(pub.status, 404);
 
   // START-Tarif hat kein "geld" → Teilen blockiert
-  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'START' } });
+  await checkout(s.accessToken, 'START');
   const blocked = await api('POST', '/api/t/offers/share', { token: s.accessToken, body: { payload: { number: 'AN-2', items: [] } } });
   assert.equal(blocked.status, 403);
   assert.equal(blocked.data.error, 'module-not-active');
 
   // Mitarbeiter dürfen nicht teilen
-  await api('POST', '/api/billing/choose-plan', { token: s.accessToken, body: { plan: 'BETRIEB' } });
+  await checkout(s.accessToken, 'BETRIEB');
   const inv = await api('POST', '/api/auth/invite', { token: s.accessToken, body: { role: 'employee' } });
   const emp = await api('POST', '/api/auth/magic', { body: { token: inv.data.url.split('#invite=')[1] } });
   const empShare = await api('POST', '/api/t/offers/share', { token: emp.data.accessToken, body: { payload: { number: 'AN-3', items: [] } } });
@@ -539,6 +552,153 @@ test('Demo-Zugang: Kontaktdaten + DSGVO-Consent → Testbetrieb + Lead', async (
   assert.ok(!leads2.data.leads.some((l) => l.id === lead.id));
 });
 
+// ---------------------------------------------------------------------------
+test('SALES: Checkout mit Rechnungsdaten, Abo sichtbar, Kündigung', async () => {
+  const s = await register('Kauf GmbH', 'kauf@test.de');
+
+  // Ohne AGB-Zustimmung → abgelehnt
+  const noTerms = await api('POST', '/api/billing/checkout', {
+    token: s.accessToken,
+    body: { plan: 'BETRIEB', billing: { company: 'K', address: 'A 1', zip: '1', city: 'B', email: 'x@y.de' } },
+  });
+  assert.equal(noTerms.status, 400);
+  assert.equal(noTerms.data.error, 'terms-required');
+
+  // Ohne Adresse → abgelehnt
+  const noAddr = await api('POST', '/api/billing/checkout', {
+    token: s.accessToken, body: { plan: 'BETRIEB', acceptTerms: true, billing: { company: 'Kauf GmbH', email: 'x@y.de' } },
+  });
+  assert.equal(noAddr.status, 400);
+  assert.equal(noAddr.data.error, 'address-required');
+
+  // Vollständiger Kauf
+  const ck = await checkout(s.accessToken, 'BETRIEB');
+  assert.equal(ck.data.tenant.plan, 'BETRIEB');
+  assert.equal(ck.data.tenant.subscription.priceEur, 35);
+
+  // Abo-Details abrufbar (inkl. Rechnungsdaten)
+  const sub = await api('GET', '/api/billing/subscription', { token: s.accessToken });
+  assert.equal(sub.data.subscription.plan, 'BETRIEB');
+  assert.equal(sub.data.subscription.billing.city, 'Berlin');
+  assert.equal(sub.data.subscription.source, 'website');
+
+  // Kauf ist im GoBD-Audit-Trail (mit Terms-Nachweis)
+  const audit = await api('GET', '/api/gobd/audit', { token: s.accessToken });
+  const ckEntry = audit.data.entries.find((e) => e.action === 'billing.checkout');
+  assert.ok(ckEntry && JSON.parse(ckEntry.detail_json).termsAccepted === true);
+
+  // Upgrade ersetzt das Abo (nur EIN aktives)
+  await checkout(s.accessToken, 'BETRIEB_PLUS');
+  const sub2 = await api('GET', '/api/billing/subscription', { token: s.accessToken });
+  assert.equal(sub2.data.subscription.plan, 'BETRIEB_PLUS');
+  assert.equal(sub2.data.subscription.price_eur, 59);
+
+  // Kündigung: falsches Passwort → 401; korrekt → Lese-Modus
+  const badCancel = await api('POST', '/api/billing/cancel', { token: s.accessToken, body: { password: 'falsch' } });
+  assert.equal(badCancel.status, 401);
+  const cancel = await api('POST', '/api/billing/cancel', { token: s.accessToken, body: { password: 'sicheres-passwort-123' } });
+  assert.equal(cancel.status, 200);
+  const subAfter = await api('GET', '/api/billing/subscription', { token: s.accessToken });
+  assert.equal(subAfter.data.subscription, null);
+  // Export bleibt möglich (kein Lock-in)
+  const ex = await api('GET', '/api/dsgvo/export', { token: s.accessToken });
+  assert.equal(ex.status, 200);
+});
+
+test('SALES: Admin sperrt/entsperrt, verlängert Testphase, sieht Details', async () => {
+  const s = await register('Sperr GmbH', 'sperr@test.de');
+  const A = { headers: { 'X-Admin-Token': 'test-admin-token' } };
+
+  // Sperren → Schreiben blockiert, Lesen erlaubt
+  const susp = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/status', { ...A, body: { status: 'suspended' } });
+  assert.equal(susp.status, 200);
+  const w = await api('POST', '/api/t/state', { token: s.accessToken, raw: '{"x":1}' });
+  assert.equal(w.status, 403);
+  assert.equal(w.data.error, 'tenant-suspended');
+  const rr = await api('GET', '/api/t/state', { token: s.accessToken });
+  assert.equal(rr.status, 200);
+
+  // Entsperren
+  await api('POST', '/api/admin/tenants/' + s.tenant.id + '/status', { ...A, body: { status: 'active' } });
+  const w2 = await api('POST', '/api/t/state', { token: s.accessToken, raw: '{"x":1}' });
+  assert.equal(w2.status, 200);
+
+  // Testphase verlängern
+  const before = dbm.getTenant(s.tenant.id).trial_ends_at;
+  const ext = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/trial', { ...A, body: { days: 30 } });
+  assert.equal(ext.status, 200);
+  assert.ok(new Date(ext.data.trialEndsAt) > new Date(before));
+
+  // Mandanten-Detail
+  const det = await api('GET', '/api/admin/tenants/' + s.tenant.id, A);
+  assert.equal(det.status, 200);
+  assert.equal(det.data.users.length, 1);
+  assert.ok(Array.isArray(det.data.recentAudit));
+});
+
+test('SALES: Vertriebs-Angebot mit Sonderpreis → Online-Abschluss → aktiver Kunde', async () => {
+  const A = { headers: { 'X-Admin-Token': 'test-admin-token' } };
+
+  // Admin erstellt persönliches Angebot: BETRIEB_PLUS für 39 € statt 59 €
+  const create = await api('POST', '/api/admin/sales-offers', {
+    ...A,
+    body: { company: 'Beratener Betrieb GmbH', contactName: 'Willi Wunsch', email: 'willi@beraten.de', phone: '0171 1', plan: 'BETRIEB_PLUS', priceEur: 39, message: 'Wie am Telefon besprochen: Sonderpreis für Sie.', days: 14 },
+  });
+  assert.equal(create.status, 201, JSON.stringify(create.data));
+  assert.equal(create.data.priceEur, 39);
+  const token = create.data.url.split('#')[1];
+
+  // Interessent ruft Angebot öffentlich auf
+  const pub = await api('GET', '/api/public/sales-offer/' + token);
+  assert.equal(pub.status, 200);
+  assert.equal(pub.data.priceEur, 39);
+  assert.equal(pub.data.listPriceEur, 59);
+  assert.ok(pub.data.message.includes('Sonderpreis'));
+
+  // Abschluss ohne Zustimmungen → abgelehnt
+  const noC = await api('POST', '/api/public/sales-offer/' + token + '/accept', { body: { password: 'sicheres-passwort-123' } });
+  assert.equal(noC.status, 400);
+
+  // Verbindlicher Abschluss
+  const acc = await api('POST', '/api/public/sales-offer/' + token + '/accept', {
+    body: { password: 'wunsch-passwort-123', consent: true, acceptTerms: true },
+  });
+  assert.equal(acc.status, 201, JSON.stringify(acc.data));
+  assert.equal(acc.data.tenant.plan, 'BETRIEB_PLUS');
+  assert.equal(acc.data.tenant.subscription.priceEur, 39, 'Sonderpreis muss im Abo stehen');
+  assert.equal(acc.data.user.role, 'owner');
+
+  // Kunde kann sofort arbeiten (kein Trial-Gate) und sich später einloggen
+  const w = await api('POST', '/api/t/state', { token: acc.data.accessToken, raw: '{"projekt":1}' });
+  assert.equal(w.status, 200);
+  const login = await api('POST', '/api/auth/login', { body: { email: 'willi@beraten.de', password: 'wunsch-passwort-123' } });
+  assert.equal(login.status, 200);
+
+  // Doppelter Abschluss blockiert; Angebot als angenommen markiert
+  const dup = await api('POST', '/api/public/sales-offer/' + token + '/accept', { body: { password: 'x'.repeat(12), consent: true, acceptTerms: true } });
+  assert.equal(dup.status, 409);
+  const list = await api('GET', '/api/admin/sales-offers', A);
+  const mine = list.data.offers.find((o) => o.email === 'willi@beraten.de');
+  assert.equal(mine.status, 'accepted');
+  assert.equal(mine.tenant_id, acc.data.tenant.id);
+
+  // Lead automatisch angelegt (Vertriebshistorie)
+  const leads = await api('GET', '/api/admin/leads', A);
+  assert.ok(leads.data.leads.some((l) => l.email === 'willi@beraten.de' && l.source === 'sales-offer'));
+
+  // MRR in der Übersicht enthält den Sonderpreis
+  const ov = await api('GET', '/api/admin/overview', A);
+  assert.ok(ov.data.stats.mrrEur >= 39);
+  assert.ok(ov.data.stats.paying >= 1);
+
+  // Widerruf eines anderen Angebots → öffentlich nicht mehr abrufbar
+  const c2 = await api('POST', '/api/admin/sales-offers', { ...A, body: { company: 'Widerruf AG', email: 'w2@x.de', plan: 'START' } });
+  const t2 = c2.data.url.split('#')[1];
+  await api('POST', '/api/admin/sales-offers/' + c2.data.offerId + '/revoke', A);
+  const gone = await api('GET', '/api/public/sales-offer/' + t2);
+  assert.equal(gone.status, 404);
+});
+
 test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async () => {
   // / ist jetzt die Marketing-Website
   const site = await fetch(BASE + '/');
@@ -565,6 +725,9 @@ test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async (
   assert.ok((await offer.text()).includes('Unterschrift'));
   const admin = await fetch(BASE + '/admin');
   assert.equal(admin.status, 200, 'Betreiber-Konsole muss erreichbar sein');
+  const abo = await fetch(BASE + '/abo');
+  assert.equal(abo.status, 200, 'Vertriebs-Angebotsseite muss erreichbar sein');
+  assert.ok((await abo.text()).includes('kostenpflichtig'), '/abo: Abschluss-Text vorhanden');
   const fav = await fetch(BASE + '/favicon.ico');
   assert.equal(fav.status, 200, 'Favicon-Route');
 });

@@ -59,7 +59,9 @@ function moduleAllowed(tenant, key) { return effectiveModules(tenant).includes(k
 function accountInfo(tenant) {
   const plan = cfg.PLANS[tenant.plan] || null;
   const trialEnds = tenant.trial_ends_at ? new Date(tenant.trial_ends_at).getTime() : 0;
+  const sub = dbm.getActiveSubscription(tenant.id);
   return {
+    subscription: sub ? { plan: sub.plan, priceEur: sub.price_eur, since: sub.created_at, payMethod: (JSON.parse(sub.billing_json || '{}').payMethod) || 'invoice' } : null,
     id: tenant.id, name: tenant.name, plan: tenant.plan,
     planLabel: plan ? plan.label : tenant.plan,
     modules: effectiveModules(tenant),
@@ -126,7 +128,7 @@ async function handleApi(req, res, pathname) {
   if (pathname === '/api/auth/login' && m === 'POST') {
     const b = await readJson(req, 16e3);
     const email = normEmail(b.email);
-    if (!rateLimit('login:' + clientIp(req), 20, 900e3) || !rateLimit('login:' + email, 10, 900e3)) {
+    if (!rateLimit('login:' + clientIp(req), cfg.LOGIN_IP_LIMIT, 900e3) || !rateLimit('login:' + email, 10, 900e3)) {
       return err(res, 429, 'rate-limited');
     }
     const user = email && dbm.getUserByEmail(email);
@@ -260,17 +262,64 @@ async function handleApi(req, res, pathname) {
     });
   }
 
-  // Tarifwahl. V1: direkte Aktivierung + Audit (Zahlung via SEPA/Stripe folgt —
-  // die Webhook-Route unten ist der Andockpunkt).
-  if (pathname === '/api/billing/choose-plan' && m === 'POST') {
+  // KAUFABSCHLUSS: Tarif + Rechnungsdaten + AGB-Zustimmung → aktives Abo.
+  // Zahlweise V1: Kauf auf Rechnung (B2B-üblich) oder SEPA (Mandat folgt);
+  // automatische Abbuchung via Stripe dockt am Webhook unten an.
+  if (pathname === '/api/billing/checkout' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner'])) return;
+    const b = await readJson(req, 32e3);
+    const plan = String(b.plan || '');
+    if (!cfg.PLANS[plan] || plan === 'TRIAL') return err(res, 400, 'invalid-plan');
+    if (b.acceptTerms !== true) return err(res, 400, 'terms-required', { hint: 'Bitte AGB und AV-Vertrag zustimmen.' });
+    const bill = b.billing || {};
+    const billing = {
+      company: String(bill.company || ctx.tenant.name).trim().slice(0, 160),
+      address: String(bill.address || '').trim().slice(0, 200),
+      zip: String(bill.zip || '').trim().slice(0, 12),
+      city: String(bill.city || '').trim().slice(0, 80),
+      ustId: String(bill.ustId || '').trim().slice(0, 32),
+      email: normEmail(bill.email || ctx.user.email || ''),
+      payMethod: bill.payMethod === 'sepa' ? 'sepa' : 'invoice',
+    };
+    if (billing.company.length < 2) return err(res, 400, 'invalid-company');
+    if (!billing.address || !billing.zip || !billing.city) return err(res, 400, 'address-required');
+    if (!isEmail(billing.email)) return err(res, 400, 'invalid-email');
+    const subId = dbm.createSubscription({
+      tenantId: ctx.tenant.id, plan, priceEur: cfg.PLANS[plan].priceEur,
+      billing, source: 'website', createdBy: ctx.user.id,
+    });
+    dbm.setTenantPlan(ctx.tenant.id, plan);
+    dbm.setTenantStatus(ctx.tenant.id, 'active', null);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.checkout', {
+      subId, plan, priceEur: cfg.PLANS[plan].priceEur, payMethod: billing.payMethod, termsAccepted: true, ip: clientIp(req),
+    });
+    return send(res, 201, {
+      ok: true, subscriptionId: subId,
+      tenant: accountInfo(dbm.getTenant(ctx.tenant.id)),
+      hint: billing.payMethod === 'sepa'
+        ? 'Abo aktiv. Das SEPA-Mandat senden wir dir per E-Mail zu.'
+        : 'Abo aktiv. Du erhältst eine Rechnung per E-Mail — zahlbar innerhalb 14 Tagen.',
+    });
+  }
+
+  if (pathname === '/api/billing/subscription' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner'])) return;
+    const sub = dbm.getActiveSubscription(ctx.tenant.id);
+    return send(res, 200, { subscription: sub ? Object.assign({}, sub, { billing_json: undefined, billing: JSON.parse(sub.billing_json || '{}') }) : null });
+  }
+
+  // Kündigung: Abo endet, Betrieb fällt auf Lese-Zugriff zurück (Export bleibt!)
+  if (pathname === '/api/billing/cancel' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return;
     if (!requireRole(ctx, res, ['owner'])) return;
     const b = await readJson(req, 16e3);
-    const plan = String(b.plan || '');
-    if (!cfg.PLANS[plan] || plan === 'TRIAL') return err(res, 400, 'invalid-plan');
-    dbm.setTenantPlan(ctx.tenant.id, plan);
-    dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.plan-changed', { from: ctx.tenant.plan, to: plan });
-    return send(res, 200, { ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)) });
+    if (!ctx.user.pass_hash || !verifyPassword(b.password, ctx.user.pass_hash)) return err(res, 401, 'password-required');
+    dbm.cancelSubscription(ctx.tenant.id);
+    dbm.setTenantPlan(ctx.tenant.id, 'TRIAL'); // abgelaufene Testphase = Lesemodus
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.cancelled', {});
+    return send(res, 200, { ok: true, hint: 'Abo gekündigt. Lesen und Datenexport bleiben jederzeit möglich.' });
   }
 
   // Stripe-Webhook-Andockpunkt (Signaturprüfung folgt mit echten Stripe-Keys)
@@ -449,6 +498,50 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, { ok: true, status: action });
   }
 
+  // ---------- VERTRIEBS-ANGEBOTE (Betreiber → beratener Interessent) ----------
+  // Öffentlich: Interessent ruft sein persönliches Abo-Angebot auf.
+  const soGet = pathname.match(/^\/api\/public\/sales-offer\/([A-Za-z0-9_-]{20,})$/);
+  if (soGet && m === 'GET') {
+    if (!rateLimit('soget:' + clientIp(req), 60, 900e3)) return err(res, 429, 'rate-limited');
+    const o = dbm.findSalesOfferByToken(sha256(soGet[1]));
+    if (!o || o.status === 'revoked') return err(res, 404, 'not-found');
+    const plan = cfg.PLANS[o.plan] || {};
+    return send(res, 200, {
+      company: o.company, contactName: o.contact_name, plan: o.plan,
+      planLabel: plan.label, listPriceEur: plan.priceEur, priceEur: o.price_eur,
+      modules: (plan.modules || []).map((k) => (cfg.MODULES[k] || {}).label || k),
+      maxEmployees: plan.maxEmployees, storageGb: plan.storageGb,
+      message: o.message, validUntil: o.valid_until, status: o.status,
+      expired: new Date(o.valid_until).getTime() < Date.now(),
+    });
+  }
+
+  // Öffentlich: Angebot verbindlich annehmen → Betrieb + aktives Abo entstehen.
+  const soAccept = pathname.match(/^\/api\/public\/sales-offer\/([A-Za-z0-9_-]{20,})\/accept$/);
+  if (soAccept && m === 'POST') {
+    if (!rateLimit('soacc:' + clientIp(req), 10, 900e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 32e3);
+    const o = dbm.findSalesOfferByToken(sha256(soAccept[1]));
+    if (!o || o.status === 'revoked') return err(res, 404, 'not-found');
+    if (o.status !== 'open') return err(res, 409, 'already-accepted');
+    if (new Date(o.valid_until).getTime() < Date.now()) return err(res, 410, 'offer-expired');
+    if (b.consent !== true || b.acceptTerms !== true) return err(res, 400, 'consent-required');
+    const password = String(b.password || '');
+    if (password.length < 10) return err(res, 400, 'password-too-short');
+    const name = String(b.name || o.contact_name || 'Inhaber').trim().slice(0, 120);
+    if (dbm.getUserByEmail(o.email)) return err(res, 409, 'email-exists', { hint: 'Für diese E-Mail existiert bereits ein Zugang — bitte anmelden, wir schalten den Tarif dann um.' });
+    const tenant = dbm.createTenant({ name: o.company, trialEndsAt: null });
+    const user = dbm.createUser({ tenantId: tenant.id, email: o.email, name, role: 'owner', passHash: hashPassword(password) });
+    dbm.createSubscription({ tenantId: tenant.id, plan: o.plan, priceEur: o.price_eur, billing: { company: o.company, email: o.email, payMethod: 'invoice' }, source: 'sales_offer', createdBy: 'sales-offer:' + o.id });
+    dbm.setTenantPlan(tenant.id, o.plan);
+    dbm.acceptSalesOffer(o.id, tenant.id);
+    dbm.createLead({ name, company: o.company, email: o.email, phone: o.phone, message: 'Vertriebs-Angebot angenommen (' + o.plan + ', ' + o.price_eur + ' €)', consentIp: clientIp(req), source: 'sales-offer', tenantId: tenant.id });
+    dbm.audit(tenant.id, user.id, 'tenant.created', { source: 'sales-offer', offerId: o.id, plan: o.plan, priceEur: o.price_eur, termsAccepted: true, ip: clientIp(req) });
+    dbm.touchLogin(user.id);
+    // Tenant frisch laden — der Tarif wurde soeben gesetzt
+    return send(res, 201, issueSession(user, dbm.getTenant(tenant.id), req));
+  }
+
   // ---------- GoBD ----------
   if (pathname === '/api/gobd/audit' && m === 'GET') {
     const ctx = requireAuth(req, res); if (!ctx) return;
@@ -534,13 +627,90 @@ async function handleApi(req, res, pathname) {
   // ---------- PLATTFORM-ADMIN ----------
   if (pathname.startsWith('/api/admin/')) {
     if (!cfg.ADMIN_TOKEN || req.headers['x-admin-token'] !== cfg.ADMIN_TOKEN) return err(res, 401, 'unauthorized');
+    // Plattform-Übersicht: KPIs für die Admin-Zentrale
+    if (pathname === '/api/admin/overview' && m === 'GET') {
+      return send(res, 200, { stats: dbm.platformStats(), plans: cfg.PLANS, moduleCatalog: cfg.MODULES });
+    }
+
     if (pathname === '/api/admin/tenants' && m === 'GET') {
-      const tenants = dbm.listTenants().map((t) => Object.assign({}, t, {
-        effective_modules: effectiveModules(t),
-        module_overrides: dbm.getTenantSettings(t.id).moduleOverrides || {},
-      }));
+      const tenants = dbm.listTenants().map((t) => {
+        const sub = dbm.getActiveSubscription(t.id);
+        return Object.assign({}, t, {
+          effective_modules: effectiveModules(t),
+          module_overrides: dbm.getTenantSettings(t.id).moduleOverrides || {},
+          subscription: sub ? { plan: sub.plan, price_eur: sub.price_eur, source: sub.source, since: sub.created_at, billing: JSON.parse(sub.billing_json || '{}') } : null,
+          storage_bytes: dbm.tenantStorageBytes(t.id),
+        });
+      });
       return send(res, 200, { tenants, plans: cfg.PLANS, moduleCatalog: cfg.MODULES });
     }
+
+    // Mandanten-Detail: Nutzer, Abo, letzte Aktivitäten
+    const tDetail = pathname.match(/^\/api\/admin\/tenants\/([^/]+)$/);
+    if (tDetail && m === 'GET') {
+      const t = dbm.getTenant(tDetail[1]);
+      if (!t) return err(res, 404, 'not-found');
+      const sub = dbm.getActiveSubscription(t.id);
+      return send(res, 200, {
+        tenant: Object.assign({}, t, { effective_modules: effectiveModules(t) }),
+        users: dbm.listUsers(t.id),
+        subscription: sub ? Object.assign({}, sub, { billing_json: undefined, billing: JSON.parse(sub.billing_json || '{}') }) : null,
+        storageBytes: dbm.tenantStorageBytes(t.id),
+        revisions: dbm.listRevisions(t.id, 5),
+        recentAudit: dbm.auditList(t.id, 20, Math.max(0, dbm.auditVerify(t.id).entries - 20)),
+      });
+    }
+
+    // Testphase verlängern (Sales-Werkzeug)
+    const tTrial = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/trial$/);
+    if (tTrial && m === 'POST') {
+      const b = await readJson(req, 16e3);
+      const t = dbm.getTenant(tTrial[1]);
+      if (!t) return err(res, 404, 'not-found');
+      const days = Math.min(Math.max(Number(b.days) || 14, 1), 90);
+      const base = Math.max(Date.now(), t.trial_ends_at ? new Date(t.trial_ends_at).getTime() : 0);
+      const until = new Date(base + days * 864e5).toISOString();
+      dbm.db.prepare('UPDATE tenants SET trial_ends_at = ? WHERE id = ?').run(until, t.id);
+      dbm.audit(t.id, 'platform-admin', 'trial.extended', { days, until });
+      return send(res, 200, { ok: true, trialEndsAt: until });
+    }
+
+    // Sperren/Entsperren (z. B. bei Zahlungsverzug) — Lesen + Export bleiben möglich
+    const tStatus = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/status$/);
+    if (tStatus && m === 'POST') {
+      const b = await readJson(req, 16e3);
+      const t = dbm.getTenant(tStatus[1]);
+      if (!t || t.status === 'deleted') return err(res, 404, 'not-found');
+      if (!['active', 'suspended'].includes(b.status)) return err(res, 400, 'invalid-status');
+      dbm.setTenantStatus(t.id, b.status, b.status === 'active' ? null : t.delete_after);
+      dbm.audit(t.id, 'platform-admin', 'tenant.' + (b.status === 'active' ? 'reactivated' : 'suspended'), {});
+      return send(res, 200, { ok: true });
+    }
+
+    // Vertriebs-Angebote verwalten
+    if (pathname === '/api/admin/sales-offers' && m === 'GET') {
+      return send(res, 200, { offers: dbm.listSalesOffers() });
+    }
+    if (pathname === '/api/admin/sales-offers' && m === 'POST') {
+      const b = await readJson(req, 32e3);
+      const email = normEmail(b.email);
+      if (!isEmail(email)) return err(res, 400, 'invalid-email');
+      if (String(b.company || '').trim().length < 2) return err(res, 400, 'invalid-company');
+      if (!cfg.PLANS[b.plan] || b.plan === 'TRIAL') return err(res, 400, 'invalid-plan');
+      const priceEur = b.priceEur != null ? Number(b.priceEur) : cfg.PLANS[b.plan].priceEur;
+      if (!(priceEur >= 0 && priceEur <= 999)) return err(res, 400, 'invalid-price');
+      const { token, hash } = opaqueToken();
+      const validUntil = new Date(Date.now() + Math.min(Math.max(Number(b.days) || 14, 1), 90) * 864e5).toISOString();
+      const oid = dbm.createSalesOffer({
+        tokenHash: hash, company: String(b.company).trim().slice(0, 160),
+        contactName: String(b.contactName || '').trim().slice(0, 120) || null,
+        email, phone: String(b.phone || '').trim().slice(0, 60) || null,
+        plan: b.plan, priceEur, message: String(b.message || '').slice(0, 2000) || null, validUntil,
+      });
+      return send(res, 201, { offerId: oid, url: baseUrl(req) + '/abo#' + token, validUntil, priceEur });
+    }
+    const soRevoke = pathname.match(/^\/api\/admin\/sales-offers\/([^/]+)\/revoke$/);
+    if (soRevoke && m === 'POST') { dbm.revokeSalesOffer(soRevoke[1]); return send(res, 200, { ok: true }); }
     // Host schaltet Module pro Mandant frei/sperrt sie (unabhängig vom Tarif)
     const modMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/modules$/);
     if (modMatch && m === 'POST') {

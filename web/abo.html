@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dein persönliches WERKOS-Angebot</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: linear-gradient(160deg, #12293f, #1a3a5c 60%, #24507c); min-height: 100vh;
+         color: #1c2b3a; padding: 20px 14px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 800; font-size: 19px;
+           margin-bottom: 18px; justify-content: center; }
+  .brand .mark { width: 34px; height: 34px; border-radius: 9px; background: #fff; color: #12293f;
+                 display: flex; align-items: center; justify-content: center; font-weight: 900; }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,.4); padding: 28px;
+          margin-bottom: 14px; }
+  h1 { font-size: 22px; color: #16324e; margin-bottom: 4px; }
+  .sub { color: #667; font-size: 13.5px; }
+  .msg { background: #f4f7fa; border-left: 4px solid #1a3a5c; border-radius: 0 10px 10px 0;
+         padding: 12px 14px; font-size: 14px; margin: 16px 0; white-space: pre-wrap; color: #345; }
+  .plan { border: 2px solid #1e8449; border-radius: 14px; padding: 18px; margin: 16px 0; }
+  .plan .name { font-weight: 800; color: #16324e; font-size: 16px; }
+  .plan .price { margin: 6px 0; }
+  .plan .price b { font-size: 36px; color: #1e8449; letter-spacing: -1px; }
+  .plan .price span { color: #667; font-size: 14px; }
+  .plan .strike { color: #98a5b3; text-decoration: line-through; font-size: 14px; margin-left: 8px; }
+  .plan ul { list-style: none; margin-top: 8px; }
+  .plan li { font-size: 13px; padding: 3px 0 3px 22px; position: relative; color: #37485a; }
+  .plan li::before { content: "✓"; position: absolute; left: 0; color: #1e8449; font-weight: 800; }
+  label { display: block; font-size: 12px; font-weight: 700; color: #456; margin: 12px 0 4px; }
+  input { width: 100%; padding: 11px; border: 1.5px solid #cdd6df; border-radius: 9px; font-size: 15px; }
+  .consent { display: flex; gap: 9px; align-items: flex-start; margin-top: 13px; font-size: 12px;
+             color: #5b6b7c; line-height: 1.5; }
+  .consent input { width: 17px; height: 17px; margin-top: 2px; flex: none; }
+  .btn { width: 100%; margin-top: 16px; padding: 14px; border: none; border-radius: 11px; background: #1e8449;
+         color: #fff; font-size: 15.5px; font-weight: 800; cursor: pointer; }
+  .btn:disabled { background: #b5c9bc; }
+  .err { color: #c0392b; font-size: 13px; font-weight: 600; min-height: 16px; margin-top: 10px; }
+  .foot { text-align: center; color: #9fb3c8; font-size: 11.5px; line-height: 1.6; }
+  .foot a { color: #c8d6e4; }
+  .done { text-align: center; padding: 16px 0; }
+  .done .big { font-size: 46px; }
+  .done h2 { color: #16324e; margin: 8px 0 6px; }
+  .done p { color: #567; font-size: 14px; }
+  .center { text-align: center; color: #c8d6e4; padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="mark">W</span>WERKOS</div>
+  <div id="app"><div class="center">⏳ Angebot wird geladen …</div></div>
+  <div class="foot">Preise zzgl. USt · monatlich kündbar · Daten in Deutschland ·
+    <a href="/impressum" target="_blank">Impressum</a> · <a href="/datenschutz" target="_blank">Datenschutz</a></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var token = (location.hash || '').replace(/^#/, '');
+  var app = document.getElementById('app');
+  var data = null;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function dt(s) { return s ? new Date(s).toLocaleDateString('de-DE') : '–'; }
+  function fail(msg) {
+    app.innerHTML = '<div class="card"><div class="done"><div class="big">🔍</div><h2>' + esc(msg) + '</h2>' +
+      '<p>Melde dich gern bei uns — wir schicken dir einen neuen Link.</p></div></div>';
+  }
+  if (!token || token.length < 20) { fail('Link unvollständig'); return; }
+
+  fetch('/api/public/sales-offer/' + encodeURIComponent(token))
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (d) { data = d; render(); })
+    .catch(function () { fail('Angebot nicht gefunden'); });
+
+  function render() {
+    if (data.status === 'accepted') {
+      app.innerHTML = '<div class="card"><div class="done"><div class="big">✅</div><h2>Bereits abgeschlossen</h2>' +
+        '<p>Dieses Angebot wurde schon angenommen.<br>Du kannst dich direkt <a href="/app">anmelden</a>.</p></div></div>';
+      return;
+    }
+    if (data.expired) { fail('Angebot abgelaufen (' + dt(data.validUntil) + ')'); return; }
+    var rabatt = data.priceEur < data.listPriceEur;
+    app.innerHTML =
+      '<div class="card">' +
+      '<h1>Hallo' + (data.contactName ? ' ' + esc(data.contactName) : '') + ' 👋</h1>' +
+      '<div class="sub">Dein persönliches Angebot für <b>' + esc(data.company) + '</b> — gültig bis ' + dt(data.validUntil) + '.</div>' +
+      (data.message ? '<div class="msg">' + esc(data.message) + '</div>' : '') +
+      '<div class="plan">' +
+      '<div class="name">WERKOS ' + esc(data.planLabel) + '</div>' +
+      '<div class="price"><b>' + Number(data.priceEur).toLocaleString('de-DE') + ' €</b><span> / Monat pauschal</span>' +
+      (rabatt ? '<span class="strike">' + Number(data.listPriceEur).toLocaleString('de-DE') + ' €</span>' : '') + '</div>' +
+      '<ul>' + (data.modules || []).map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') +
+      '<li>bis ' + data.maxEmployees + ' Mitarbeiter · ' + data.storageGb + ' GB Speicher</li>' +
+      '<li>Ein Preis pro Betrieb — egal wie viele Mitarbeiter</li>' +
+      '<li>Monatlich kündbar · Rechnung mit 14 Tagen Ziel</li></ul>' +
+      '</div>' +
+      '<label>Dein Name</label><input id="aName" autocomplete="name" value="' + esc(data.contactName || '') + '">' +
+      '<label>Passwort für deinen Zugang (mind. 10 Zeichen)</label><input id="aPass" type="password" autocomplete="new-password">' +
+      '<div class="consent"><input type="checkbox" id="aTerms"><span>Ich schließe das Abo <b>' + esc(data.planLabel) + '</b> für ' +
+      Number(data.priceEur).toLocaleString('de-DE') + ' €/Monat zzgl. USt verbindlich ab (monatlich kündbar) und stimme dem Auftragsverarbeitungsvertrag zu. *</span></div>' +
+      '<div class="consent"><input type="checkbox" id="aConsent"><span>Ich willige in die Verarbeitung meiner Daten gemäß <a href="/datenschutz" target="_blank">Datenschutzerklärung</a> ein. *</span></div>' +
+      '<button class="btn" id="aGo">✅ Jetzt kostenpflichtig abschließen</button>' +
+      '<div class="err" id="aErr"></div>' +
+      '</div>';
+
+    var btn = document.getElementById('aGo');
+    btn.onclick = function () {
+      var errEl = document.getElementById('aErr');
+      errEl.textContent = '';
+      if (!document.getElementById('aTerms').checked || !document.getElementById('aConsent').checked) {
+        errEl.textContent = 'Bitte beide Zustimmungen bestätigen.'; return;
+      }
+      var pw = document.getElementById('aPass').value;
+      if (pw.length < 10) { errEl.textContent = 'Passwort: mindestens 10 Zeichen.'; return; }
+      btn.disabled = true; btn.textContent = '⏳ Abschluss läuft …';
+      fetch('/api/public/sales-offer/' + encodeURIComponent(token) + '/accept', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: document.getElementById('aName').value, password: pw, acceptTerms: true, consent: true }),
+      }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+        .then(function (r) {
+          if (r.s === 201) {
+            try { localStorage.setItem('werkos_session_v1', JSON.stringify(r.j)); } catch (e) {}
+            app.innerHTML = '<div class="card"><div class="done"><div class="big">🎉</div>' +
+              '<h2>Willkommen bei WERKOS!</h2>' +
+              '<p>Dein Abo ist aktiv, alle Module sind freigeschaltet.<br>Die erste Rechnung kommt per E-Mail.</p>' +
+              '<a href="/app" style="display:block;margin-top:16px;"><button class="btn">→ Jetzt loslegen (du bist angemeldet)</button></a>' +
+              '</div></div>';
+          } else {
+            btn.disabled = false; btn.textContent = '✅ Jetzt kostenpflichtig abschließen';
+            var map = { 'email-exists': (r.j.hint || 'E-Mail bereits registriert.'), 'password-too-short': 'Passwort: mindestens 10 Zeichen.', 'offer-expired': 'Das Angebot ist abgelaufen.', 'already-accepted': 'Bereits angenommen — bitte anmelden.' };
+            errEl.textContent = map[r.j.error] || ('Fehler: ' + (r.j.error || r.s));
+          }
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = '✅ Jetzt kostenpflichtig abschließen'; errEl.textContent = 'Netzwerkfehler — bitte erneut versuchen.'; });
+    };
+  }
+})();
+</script>
+</body>
+</html>
