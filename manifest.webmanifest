@@ -1,6 +1,6 @@
 {
-  "name": "WERKOS — Dein Betrieb in einer App",
-  "short_name": "WERKOS",
+  "name": "werkflow — Dein Betrieb in einer App",
+  "short_name": "werkflow",
   "start_url": "app.html",
   "display": "standalone",
   "background_color": "#f5f6f8",

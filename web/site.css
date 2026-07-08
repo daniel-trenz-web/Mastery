@@ -21,6 +21,7 @@ nav.site .wrap { display: flex; align-items: center; gap: 26px; height: 62px; }
         color: #fff; letter-spacing: .3px; }
 .logo .mark { width: 32px; height: 32px; border-radius: 9px; background: #fff; color: var(--navy);
               display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 900; }
+.logo .flow-txt { color: #4fd483; }
 nav.site .links { display: flex; gap: 22px; margin-left: 12px; }
 nav.site .links a { color: #c8d6e4; font-size: 14px; font-weight: 600; padding: 4px 2px; }
 nav.site .links a:hover { color: #fff; }

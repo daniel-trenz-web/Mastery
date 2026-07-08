@@ -96,7 +96,7 @@ const step = (s) => console.log('SALES ▶', s);
   await kunde.check('#aTerms');
   await kunde.check('#aConsent');
   await kunde.click('#aGo');
-  await kunde.waitForFunction(() => document.body.textContent.includes('Willkommen bei WERKOS'), null, { timeout: 10000 });
+  await kunde.waitForFunction(() => document.body.textContent.includes('Willkommen bei werkflow'), null, { timeout: 10000 });
   await kunde.screenshot({ path: OUT + '/s7-kunde-abgeschlossen.png', fullPage: true });
   step('Interessent hat online verbindlich abgeschlossen ✓');
 
