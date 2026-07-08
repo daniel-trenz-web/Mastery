@@ -1,26 +1,60 @@
-# WERKOS — Produktions-Deployment (Hetzner, Deutschland)
+# WERKOS — Produktions-Deployment (IONOS, Hetzner & Co.)
 
 ## 1. Voraussetzungen
 
-- Hetzner Cloud-Server (CX22 reicht für die ersten ~200 Betriebe), Ubuntu 24.04
-- Domain mit A/AAAA-Record auf den Server (z. B. `app.werkos.de`)
-- Docker + Docker-Compose-Plugin installiert
+- Ein **VPS/Cloud-Server** mit Ubuntu 22.04/24.04 oder Debian 12 und Root-SSH
+  (IONOS VPS ab ~2 GB RAM reicht für die ersten ~200 Betriebe).
+  ⚠ Ein IONOS **Webhosting-Paket** reicht NICHT — dort läuft kein Node/Docker;
+  es muss ein „VPS" bzw. „Cloud Server" sein.
+- Eine Domain oder Subdomain (z. B. `app.deine-firma.de`)
 
-## 2. Installation
+## 2. Schnell-Installation (ein Script)
+
+**Schritt 1 — DNS:** Im Domain-Verwaltungsbereich (z. B. IONOS → Domains → DNS)
+einen **A-Record** anlegen: `app` → `<IP deines Servers>`. (IPv6 vorhanden?
+Zusätzlich AAAA-Record.)
+
+**Schritt 2 — auf dem Server** (per SSH als root):
 
 ```bash
-git clone <repo> werkos && cd werkos/deploy
-cp .env.example .env
-# Secrets erzeugen und in .env eintragen:
-openssl rand -base64 48   # → WERKOS_SECRET
-openssl rand -hex 24      # → WERKOS_ADMIN_TOKEN
-# WERKOS_DOMAIN + WERKOS_BASE_URL auf die echte Domain setzen
-docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/daniel-trenz-web/Mastery/main/deploy/setup-server.sh -o setup.sh
+bash setup.sh app.deine-firma.de
 ```
 
-Caddy holt automatisch ein Let's-Encrypt-Zertifikat und setzt HSTS.
-Die App ist danach unter `https://<domain>/` erreichbar; Registrierung ist offen
-(14-Tage-Testphase, Rate-Limit 10 Registrierungen/Stunde/IP).
+Das Script installiert Docker, öffnet die Firewall (80/443), klont das Repo
+nach `/opt/werkos`, erzeugt die Secrets (`.env`) und startet alles. Am Ende
+zeigt es dir die URLs **und deinen Admin-Token** an.
+
+**IONOS-Besonderheit:** Wenn im IONOS-Cloud-Panel eine eigene Firewall-Policy
+aktiv ist, dort ebenfalls die Ports **80 + 443 (TCP)** freigeben — sonst
+bekommt Caddy kein TLS-Zertifikat.
+
+Caddy holt automatisch ein Let's-Encrypt-Zertifikat und setzt HSTS. Danach:
+
+| URL | Inhalt |
+|---|---|
+| `https://app.deine-firma.de/` | Website |
+| `…/app` | die Anwendung |
+| `…/admin` | Admin-Zentrale (Token aus der Installation) |
+
+## 3. Weiterbearbeiten: Auto-Deploy bei jedem Merge
+
+Damit Änderungen aus der Entwicklung automatisch auf dem Server landen:
+
+1. Auf dem Server ein Deploy-Schlüsselpaar erzeugen:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/werkos_deploy -N ""
+   cat ~/.ssh/werkos_deploy.pub >> ~/.ssh/authorized_keys
+   cat ~/.ssh/werkos_deploy   # ← privaten Schlüssel kopieren
+   ```
+2. Im GitHub-Repo → **Settings → Secrets and variables → Actions** drei
+   Secrets anlegen: `DEPLOY_HOST` (Server-IP), `DEPLOY_USER` (`root`),
+   `DEPLOY_SSH_KEY` (der private Schlüssel aus Schritt 1).
+
+Ab dann gilt: **Merge auf `main` → Server aktualisiert sich selbst**
+(Workflow „Server-Deploy"). Ohne die Secrets wird der Schritt einfach
+übersprungen. Manuell geht jederzeit: `bash /opt/werkos/deploy/update.sh`.
+Kundendaten bleiben bei Updates unangetastet (eigenes Docker-Volume).
 
 ## 3. Betrieb
 
