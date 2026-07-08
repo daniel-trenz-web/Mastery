@@ -31,6 +31,7 @@ function serveStatic(req, res, pathname) {
   if (pathname === '/') pathname = '/home.html';                    // Marketing-Website
   else if (pathname === '/app' || pathname === '/app/') pathname = '/app.html'; // die PWA
   else if (pathname === '/angebot') pathname = '/offer.html';       // öffentliche Angebotsseite
+  else if (pathname === '/abo') pathname = '/abo.html';             // persönliches Vertriebs-Angebot
   else if (pathname === '/admin') pathname = '/admin.html';         // Betreiber-Konsole
   else if (pathname === '/impressum') pathname = '/impressum.html';
   else if (pathname === '/datenschutz') pathname = '/datenschutz.html';

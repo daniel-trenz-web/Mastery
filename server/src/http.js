@@ -75,7 +75,10 @@ function requireRole(ctx, res, roles) {
 function requireWritable(ctx, res, PLANS) {
   if (ctx.user.role === 'external') { err(res, 403, 'read-only-role'); return false; }
   const t = ctx.tenant;
-  if (t.status !== 'active') { err(res, 403, 'tenant-deletion-pending'); return false; }
+  if (t.status !== 'active') {
+    err(res, 403, t.status === 'suspended' ? 'tenant-suspended' : 'tenant-deletion-pending');
+    return false;
+  }
   if (t.plan === 'TRIAL' && t.trial_ends_at && new Date(t.trial_ends_at).getTime() < Date.now()) {
     err(res, 402, 'trial-expired', { hint: 'Bitte Tarif wählen (START/BETRIEB/BETRIEB PLUS).' });
     return false;

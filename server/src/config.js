@@ -76,4 +76,5 @@ module.exports = {
 
   // Rate-Limits (pro IP); für Tests via Env übersteuerbar
   REGISTER_LIMIT_PER_HOUR: Number(process.env.WERKOS_REGISTER_LIMIT || 10),
+  LOGIN_IP_LIMIT: Number(process.env.WERKOS_LOGIN_IP_LIMIT || 20),
 };

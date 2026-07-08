@@ -122,6 +122,42 @@ CREATE TABLE IF NOT EXISTS offer_links (
 CREATE INDEX IF NOT EXISTS offer_token ON offer_links(token_hash);
 CREATE INDEX IF NOT EXISTS offer_tenant ON offer_links(tenant_id, created_at);
 
+-- Abonnements: der Kaufabschluss eines Mandanten. price_eur ist ein SNAPSHOT
+-- (erlaubt individuelle Vertriebspreise, Bestandsschutz bei Preiserhöhungen).
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id            TEXT PRIMARY KEY,
+  tenant_id     TEXT NOT NULL REFERENCES tenants(id),
+  plan          TEXT NOT NULL,
+  price_eur     REAL NOT NULL,
+  billing_json  TEXT NOT NULL DEFAULT '{}',   -- Firma, Anschrift, USt-ID, Zahlweise
+  source        TEXT NOT NULL DEFAULT 'website', -- website | sales_offer | admin
+  status        TEXT NOT NULL DEFAULT 'active',  -- active | cancelled
+  created_at    TEXT NOT NULL,
+  created_by    TEXT,
+  cancelled_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS subs_tenant ON subscriptions(tenant_id, created_at);
+
+-- Vertriebs-Angebote: WIR (Betreiber) schicken beratenen Interessenten ein
+-- persönliches Abo-Angebot (ggf. Sonderpreis) — online abschließbar.
+CREATE TABLE IF NOT EXISTS sales_offers (
+  id           TEXT PRIMARY KEY,
+  token_hash   TEXT NOT NULL,
+  company      TEXT NOT NULL,
+  contact_name TEXT,
+  email        TEXT NOT NULL,
+  phone        TEXT,
+  plan         TEXT NOT NULL,
+  price_eur    REAL NOT NULL,
+  message      TEXT,
+  valid_until  TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'open',  -- open | accepted | revoked
+  created_at   TEXT NOT NULL,
+  accepted_at  TEXT,
+  tenant_id    TEXT
+);
+CREATE INDEX IF NOT EXISTS salesoffer_token ON sales_offers(token_hash);
+
 -- Demo-/Kontakt-Anfragen von der Website (Leads) — DSGVO: nur mit Consent,
 -- Zeitstempel + IP als Nachweis der Einwilligung (Art. 7 Abs. 1 DSGVO).
 CREATE TABLE IF NOT EXISTS leads (
@@ -269,6 +305,62 @@ function setTenantModuleOverrides(tid, overrides) {
 }
 
 // ---------------------------------------------------------------------------
+// Abonnements
+// ---------------------------------------------------------------------------
+function createSubscription({ tenantId, plan, priceEur, billing, source, createdBy }) {
+  // Nur EIN aktives Abo pro Mandant: vorheriges als abgelöst markieren
+  db.prepare("UPDATE subscriptions SET status = 'cancelled', cancelled_at = ? WHERE tenant_id = ? AND status = 'active'")
+    .run(nowIso(), tenantId);
+  const sid = id('sub');
+  db.prepare(`INSERT INTO subscriptions (id, tenant_id, plan, price_eur, billing_json, source, created_at, created_by)
+    VALUES (?,?,?,?,?,?,?,?)`)
+    .run(sid, tenantId, plan, priceEur, JSON.stringify(billing || {}), source || 'website', nowIso(), createdBy || null);
+  return sid;
+}
+function getActiveSubscription(tenantId) {
+  return db.prepare("SELECT * FROM subscriptions WHERE tenant_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1").get(tenantId) || null;
+}
+function cancelSubscription(tenantId) {
+  db.prepare("UPDATE subscriptions SET status = 'cancelled', cancelled_at = ? WHERE tenant_id = ? AND status = 'active'")
+    .run(nowIso(), tenantId);
+}
+function platformStats() {
+  const t = db.prepare("SELECT COUNT(*) AS n FROM tenants WHERE status != 'deleted'").get().n;
+  const trials = db.prepare("SELECT COUNT(*) AS n FROM tenants WHERE plan = 'TRIAL' AND status != 'deleted'").get().n;
+  const paying = db.prepare(`SELECT COUNT(DISTINCT tenant_id) AS n FROM subscriptions s
+    JOIN tenants tn ON tn.id = s.tenant_id WHERE s.status = 'active' AND tn.status != 'deleted'`).get().n;
+  const mrr = db.prepare(`SELECT COALESCE(SUM(s.price_eur),0) AS m FROM subscriptions s
+    JOIN tenants tn ON tn.id = s.tenant_id WHERE s.status = 'active' AND tn.status != 'deleted'`).get().m;
+  const leads = db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
+  const offersOpen = db.prepare("SELECT COUNT(*) AS n FROM sales_offers WHERE status = 'open'").get().n;
+  return { tenants: t, trials, paying, mrrEur: mrr, leads, salesOffersOpen: offersOpen };
+}
+
+// ---------------------------------------------------------------------------
+// Vertriebs-Angebote (Betreiber → Interessent)
+// ---------------------------------------------------------------------------
+function createSalesOffer({ tokenHash, company, contactName, email, phone, plan, priceEur, message, validUntil }) {
+  const oid = id('so');
+  db.prepare(`INSERT INTO sales_offers (id, token_hash, company, contact_name, email, phone, plan, price_eur, message, valid_until, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(oid, tokenHash, company, contactName || null, email, phone || null, plan, priceEur, message || null, validUntil, nowIso());
+  return oid;
+}
+function findSalesOfferByToken(tokenHash) {
+  return db.prepare('SELECT * FROM sales_offers WHERE token_hash = ?').get(tokenHash) || null;
+}
+function listSalesOffers() {
+  return db.prepare('SELECT * FROM sales_offers ORDER BY created_at DESC LIMIT 500').all();
+}
+function acceptSalesOffer(oid, tenantId) {
+  db.prepare("UPDATE sales_offers SET status = 'accepted', accepted_at = ?, tenant_id = ? WHERE id = ? AND status = 'open'")
+    .run(nowIso(), tenantId, oid);
+}
+function revokeSalesOffer(oid) {
+  db.prepare("UPDATE sales_offers SET status = 'revoked' WHERE id = ? AND status = 'open'").run(oid);
+}
+
+// ---------------------------------------------------------------------------
 // Leads (Demo-Anfragen von der Website)
 // ---------------------------------------------------------------------------
 function createLead({ name, company, email, phone, message, consentIp, source, tenantId }) {
@@ -382,6 +474,8 @@ function purgeTenant(tenantId) {
   db.exec('BEGIN');
   try {
     tx('DELETE FROM leads WHERE tenant_id = ?').run(tenantId); // DSGVO: Lead-Daten mitlöschen
+    tx('DELETE FROM subscriptions WHERE tenant_id = ?').run(tenantId);
+    tx("UPDATE sales_offers SET company = '[gelöscht]', contact_name = NULL, email = '[gelöscht]', phone = NULL WHERE tenant_id = ?").run(tenantId);
     tx('DELETE FROM offer_links WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM files WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM state_revisions WHERE tenant_id = ?').run(tenantId);
@@ -406,6 +500,8 @@ module.exports = {
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
   getTenantSettings, setTenantModuleOverrides,
   createLead, listLeads, deleteLead,
+  createSubscription, getActiveSubscription, cancelSubscription, platformStats,
+  createSalesOffer, findSalesOfferByToken, listSalesOffers, acceptSalesOffer, revokeSalesOffer,
   createOfferLink, findOfferLinkByToken, getOfferLink, listOfferLinks,
   markOfferOpened, respondOfferLink, revokeOfferLink,
   createUser, getUser, getUserByEmail, touchLogin, listUsers,

@@ -3,72 +3,107 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WERKOS — Betreiber-Konsole</title>
+<title>WERKOS — Admin-Zentrale</title>
+<meta name="robots" content="noindex">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         background: #12293f; color: #223; min-height: 100vh; padding: 20px; }
-  .wrap { max-width: 1080px; margin: 0 auto; }
+         background: #0f2236; color: #223; min-height: 100vh; padding: 20px; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
   h1 { color: #fff; font-size: 20px; margin-bottom: 4px; }
-  .sub { color: #9fb3c8; font-size: 13px; margin-bottom: 18px; }
+  .sub { color: #9fb3c8; font-size: 13px; margin-bottom: 16px; }
   .card { background: #fff; border-radius: 12px; padding: 18px; margin-bottom: 14px;
           box-shadow: 0 8px 30px rgba(0,0,0,.25); }
-  input, select { padding: 9px 11px; border: 1px solid #cdd6df; border-radius: 8px; font-size: 14px; }
+  input, select, textarea { padding: 9px 11px; border: 1px solid #cdd6df; border-radius: 8px;
+                            font-size: 14px; font-family: inherit; }
   button { padding: 9px 14px; border: none; border-radius: 8px; background: #1a3a5c; color: #fff;
            font-weight: 600; font-size: 13px; cursor: pointer; }
   button:hover { background: #2a5080; }
   button.ghost { background: #eef1f5; color: #345; }
+  button.small { padding: 4px 9px; font-size: 11.5px; }
+  button.green { background: #1e8449; }
+  button.red { background: #fdecea; color: #c0392b; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; padding: 8px 6px; color: #789; font-size: 11px; text-transform: uppercase;
        border-bottom: 2px solid #e4e9ef; }
   td { padding: 10px 6px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
+  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 14px; }
+  .kpi { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  .kpi b { font-size: 24px; display: block; letter-spacing: -0.5px; }
+  .kpi span { font-size: 10.5px; color: #789; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi.green b { color: #1e8449; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button { background: rgba(255,255,255,.12); color: #c8d6e4; }
+  .tabs button.on { background: #fff; color: #16324e; }
   .plan-badge { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
   .plan-TRIAL { background: #fff5df; color: #8a6d1a; }
   .plan-START { background: #e3edf7; color: #1a3a5c; }
   .plan-BETRIEB { background: #dff5e7; color: #1e8449; }
   .plan-BETRIEB_PLUS { background: #ecdff5; color: #6c3483; }
-  .mod { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #f4f7fa;
-         border: 1px solid #e0e7ee; border-radius: 8px; padding: 4px 8px; margin: 2px; cursor: pointer;
-         user-select: none; }
+  .st { display: inline-block; padding: 2px 8px; border-radius: 9px; font-size: 10.5px; font-weight: 700; }
+  .st.active { background: #dff5e7; color: #1e8449; }
+  .st.suspended { background: #fdecea; color: #c0392b; }
+  .st.deletion_pending { background: #fff5df; color: #8a6d1a; }
+  .st.deleted { background: #eef1f5; color: #789; }
+  .st.open { background: #fff5df; color: #8a6d1a; }
+  .st.accepted { background: #dff5e7; color: #1e8449; }
+  .st.revoked { background: #eef1f5; color: #789; }
+  .mod { display: inline-flex; align-items: center; font-size: 11px; background: #f4f7fa;
+         border: 1px solid #e0e7ee; border-radius: 7px; padding: 2px 7px; margin: 1.5px; cursor: pointer; user-select: none; }
   .mod.on { background: #dff5e7; border-color: #b5e0c5; color: #1e8449; font-weight: 700; }
   .mod.override { outline: 2px dashed #f39c12; }
-  .hint { font-size: 11px; color: #92a0af; margin-top: 6px; }
+  .muted { color: #92a0af; font-size: 11px; }
   .err { color: #ffb3ab; font-size: 13px; margin-top: 10px; }
-  .muted { color: #92a0af; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .form-grid label { font-size: 11px; font-weight: 700; color: #456; display: block; margin-bottom: 3px; }
+  .form-grid input, .form-grid select { width: 100%; }
+  .link-out { background: #f4f7fa; border-radius: 8px; padding: 10px; font-size: 12px;
+              word-break: break-all; margin-top: 10px; }
+  .detail { background: #f8fafc; border-radius: 10px; padding: 12px; margin-top: 8px; font-size: 12.5px; }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, 1fr); } .form-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🛠 WERKOS — Betreiber-Konsole</h1>
-  <div class="sub">Mandanten, Tarife und Modul-Freischaltungen verwalten. Zugriff nur mit Admin-Token (Server: <code>WERKOS_ADMIN_TOKEN</code>).</div>
+  <h1>🛠 WERKOS — Admin-Zentrale</h1>
+  <div class="sub">Kunden, Abos, Demo-Zugänge, Leads &amp; Vertriebs-Angebote. Zugriff nur mit Admin-Token (<code>WERKOS_ADMIN_TOKEN</code>).</div>
   <div class="card" id="loginCard">
-    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <div class="row">
       <input type="password" id="tok" placeholder="Admin-Token" style="flex:1; min-width:240px;">
       <button id="go">Anmelden</button>
     </div>
     <div class="err" id="loginErr"></div>
   </div>
-  <div id="list"></div>
+  <div id="main" style="display:none;">
+    <div class="kpis" id="kpis"></div>
+    <div class="tabs">
+      <button data-tab="tenants" class="on">🏢 Mandanten</button>
+      <button data-tab="offers">📨 Vertriebs-Angebote</button>
+      <button data-tab="leads">📇 Leads</button>
+    </div>
+    <div id="content"></div>
+  </div>
 </div>
 <script>
 (function () {
   'use strict';
   var token = sessionStorage.getItem('werkos_admin_token') || '';
-  var catalog = {}, plans = {};
+  var plans = {}, catalog = {};
+  var activeTab = 'tenants';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-
+  function eur(n) { return Number(n || 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }); }
+  function dt(s) { return s ? new Date(s).toLocaleDateString('de-DE') : '–'; }
   function api(method, path, body) {
-    return fetch(path, {
-      method: method,
-      headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-    }).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); });
+    return fetch(path, { method: method, headers: { 'X-Admin-Token': token, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); });
   }
 
-  function load() {
-    api('GET', '/api/admin/tenants').then(function (r) {
+  function boot() {
+    api('GET', '/api/admin/overview').then(function (r) {
       if (r.s !== 200) {
         sessionStorage.removeItem('werkos_admin_token');
         document.getElementById('loginErr').textContent = r.s === 401 ? 'Token ungültig.' : 'Fehler ' + r.s;
@@ -76,65 +111,219 @@
       }
       sessionStorage.setItem('werkos_admin_token', token);
       document.getElementById('loginCard').style.display = 'none';
-      catalog = r.j.moduleCatalog || {};
-      plans = r.j.plans || {};
-      render(r.j.tenants || []);
+      document.getElementById('main').style.display = '';
+      plans = r.j.plans; catalog = r.j.moduleCatalog;
+      renderKpis(r.j.stats);
+      renderTab();
     });
   }
 
-  function render(tenants) {
-    var el = document.getElementById('list');
-    var html = '<div class="card"><table><thead><tr><th>Betrieb</th><th>Tarif</th>' +
-      '<th>Module (Klick = Host-Override an/aus)</th><th>Nutzer</th><th>Status</th></tr></thead><tbody>';
-    tenants.forEach(function (t) {
-      var planOpts = Object.keys(plans).map(function (p) {
-        return '<option value="' + p + '"' + (t.plan === p ? ' selected' : '') + '>' + esc(plans[p].label) + (plans[p].priceEur ? ' (' + plans[p].priceEur + ' €)' : '') + '</option>';
-      }).join('');
-      var planModules = (plans[t.plan] || {}).modules || [];
-      var mods = Object.keys(catalog).map(function (k) {
-        var eff = (t.effective_modules || []).indexOf(k) >= 0;
-        var ov = t.module_overrides && typeof t.module_overrides[k] === 'boolean';
-        return '<span class="mod' + (eff ? ' on' : '') + (ov ? ' override' : '') + '" data-tid="' + esc(t.id) + '" data-mod="' + k + '" title="' + esc(catalog[k].desc) +
-          (ov ? ' — HOST-OVERRIDE aktiv' : (planModules.indexOf(k) >= 0 ? ' — im Tarif enthalten' : ' — nicht im Tarif')) + '">' +
-          (eff ? '✓ ' : '') + esc(catalog[k].label) + '</span>';
-      }).join('');
-      html += '<tr><td><b>' + esc(t.name) + '</b><br><span class="muted" style="font-size:11px;">' + esc(t.id) + '</span></td>' +
-        '<td><span class="plan-badge plan-' + esc(t.plan) + '">' + esc((plans[t.plan] || {}).label || t.plan) + '</span><br>' +
-        '<select data-plansel="' + esc(t.id) + '" style="margin-top:6px; font-size:12px;">' + planOpts + '</select></td>' +
-        '<td>' + mods + '<div class="hint">Gestrichelt = Host-Override (unabhängig vom Tarif)</div></td>' +
-        '<td>' + (t.user_count || 0) + '<br><span class="muted" style="font-size:11px;">Rev ' + (t.last_rev || 0) + '</span></td>' +
-        '<td>' + esc(t.status) + (t.delete_after ? '<br><span class="muted" style="font-size:11px;">Löschung: ' + esc(t.delete_after.slice(0, 10)) + '</span>' : '') + '</td></tr>';
-    });
-    html += '</tbody></table></div>';
-    el.innerHTML = html;
+  function renderKpis(s) {
+    document.getElementById('kpis').innerHTML =
+      '<div class="kpi"><b>' + s.tenants + '</b><span>Betriebe gesamt</span></div>' +
+      '<div class="kpi green"><b>' + s.paying + '</b><span>Zahlende Kunden</span></div>' +
+      '<div class="kpi green"><b>' + eur(s.mrrEur) + '</b><span>MRR / Monat</span></div>' +
+      '<div class="kpi"><b>' + s.trials + '</b><span>Test / Demo</span></div>' +
+      '<div class="kpi"><b>' + s.salesOffersOpen + '</b><span>Offene Angebote</span></div>' +
+      '<div class="kpi"><b>' + s.leads + '</b><span>Leads</span></div>';
+  }
 
-    // Tarif ändern
-    el.querySelectorAll('select[data-plansel]').forEach(function (sel) {
-      sel.onchange = function () {
-        api('POST', '/api/admin/tenants/' + sel.dataset.plansel + '/plan', { plan: sel.value }).then(load);
-      };
+  function refreshKpis() { api('GET', '/api/admin/overview').then(function (r) { if (r.s === 200) renderKpis(r.j.stats); }); }
+
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on'); activeTab = b.dataset.tab; renderTab();
+    };
+  });
+
+  function renderTab() {
+    if (activeTab === 'tenants') renderTenants();
+    else if (activeTab === 'offers') renderOffers();
+    else renderLeads();
+  }
+
+  // ------------------------------------------------------------------ Mandanten
+  function renderTenants() {
+    api('GET', '/api/admin/tenants').then(function (r) {
+      var el = document.getElementById('content');
+      var rows = (r.j.tenants || []).map(function (t) {
+        var sub = t.subscription;
+        var planModules = (plans[t.plan] || {}).modules || [];
+        var mods = Object.keys(catalog).map(function (k) {
+          var eff = (t.effective_modules || []).indexOf(k) >= 0;
+          var ov = t.module_overrides && typeof t.module_overrides[k] === 'boolean';
+          return '<span class="mod' + (eff ? ' on' : '') + (ov ? ' override' : '') + '" data-tid="' + esc(t.id) + '" data-mod="' + k + '" ' +
+            'title="' + esc(catalog[k].label) + (ov ? ' — Override aktiv' : (planModules.indexOf(k) >= 0 ? ' — im Tarif' : ' — nicht im Tarif')) + '">' +
+            (eff ? '✓' : '') + esc(catalog[k].label.split(' ')[0]) + '</span>';
+        }).join('');
+        var planOpts = Object.keys(plans).map(function (p) {
+          return '<option value="' + p + '"' + (t.plan === p ? ' selected' : '') + '>' + esc(plans[p].label) + '</option>';
+        }).join('');
+        var typ = sub ? '💶 ' + eur(sub.price_eur) + '/M · ' + (sub.source === 'sales_offer' ? 'Vertrieb' : 'Website') + ' · seit ' + dt(sub.since)
+                      : (t.plan === 'TRIAL' ? '🧪 Demo/Test bis ' + dt(t.trial_ends_at) : '<span class="muted">kein Abo</span>');
+        return '<tr>' +
+          '<td><b>' + esc(t.name) + '</b><br><span class="muted">' + esc(t.id) + ' · seit ' + dt(t.created_at) + '</span></td>' +
+          '<td><span class="plan-badge plan-' + esc(t.plan) + '">' + esc((plans[t.plan] || {}).label || t.plan) + '</span><br>' +
+          '<select data-plansel="' + esc(t.id) + '" style="margin-top:5px;font-size:11.5px;padding:4px;">' + planOpts + '</select><br>' +
+          '<span style="font-size:11.5px;">' + typ + '</span></td>' +
+          '<td>' + mods + '</td>' +
+          '<td>' + (t.user_count || 0) + ' 👤<br><span class="muted">' + (t.storage_bytes / 1048576).toFixed(1) + ' MB · Rev ' + (t.last_rev || 0) + '</span></td>' +
+          '<td><span class="st ' + esc(t.status) + '">' + esc(t.status) + '</span><br>' +
+          '<div class="row" style="margin-top:6px;gap:4px;">' +
+          '<button class="small ghost" data-detail="' + esc(t.id) + '">Details</button>' +
+          '<button class="small ghost" data-trial="' + esc(t.id) + '">+14 T Test</button>' +
+          (t.status === 'active' ? '<button class="small red" data-suspend="' + esc(t.id) + '">Sperren</button>' :
+            (t.status === 'suspended' ? '<button class="small green" data-activate="' + esc(t.id) + '">Entsperren</button>' : '')) +
+          '</div></td></tr>' +
+          '<tr id="detail-' + esc(t.id) + '" style="display:none;"><td colspan="5"><div class="detail"></div></td></tr>';
+      }).join('');
+      el.innerHTML = '<div class="card"><table><thead><tr><th>Betrieb</th><th>Tarif &amp; Abo</th>' +
+        '<th>Module (Klick = Override)</th><th>Nutzer</th><th>Status / Aktionen</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="5" class="muted">Noch keine Mandanten.</td></tr>') + '</tbody></table>' +
+        '<div class="muted" style="margin-top:8px;">Gestrichelte Module = Host-Override (unabhängig vom Tarif). Tarifwechsel hier = manuelle Freischaltung ohne Abo-Datensatz (z. B. Kulanz).</div></div>';
+
+      el.querySelectorAll('select[data-plansel]').forEach(function (sel) {
+        sel.onchange = function () { api('POST', '/api/admin/tenants/' + sel.dataset.plansel + '/plan', { plan: sel.value }).then(function () { renderTenants(); refreshKpis(); }); };
+      });
+      el.querySelectorAll('.mod').forEach(function (m2) {
+        m2.onclick = function () {
+          var t = r.j.tenants.find(function (x) { return x.id === m2.dataset.tid; });
+          var ov = Object.assign({}, t.module_overrides || {});
+          if (typeof ov[m2.dataset.mod] === 'boolean') delete ov[m2.dataset.mod];
+          else ov[m2.dataset.mod] = (t.effective_modules || []).indexOf(m2.dataset.mod) < 0;
+          api('POST', '/api/admin/tenants/' + t.id + '/modules', { overrides: ov }).then(renderTenants);
+        };
+      });
+      el.querySelectorAll('[data-trial]').forEach(function (b) {
+        b.onclick = function () { api('POST', '/api/admin/tenants/' + b.dataset.trial + '/trial', { days: 14 }).then(function () { renderTenants(); }); };
+      });
+      el.querySelectorAll('[data-suspend]').forEach(function (b) {
+        b.onclick = function () { if (confirm('Mandant sperren? Schreiben wird blockiert, Lesen/Export bleibt.')) api('POST', '/api/admin/tenants/' + b.dataset.suspend + '/status', { status: 'suspended' }).then(renderTenants); };
+      });
+      el.querySelectorAll('[data-activate]').forEach(function (b) {
+        b.onclick = function () { api('POST', '/api/admin/tenants/' + b.dataset.activate + '/status', { status: 'active' }).then(renderTenants); };
+      });
+      el.querySelectorAll('[data-detail]').forEach(function (b) {
+        b.onclick = function () {
+          var row = document.getElementById('detail-' + b.dataset.detail);
+          if (row.style.display !== 'none') { row.style.display = 'none'; return; }
+          api('GET', '/api/admin/tenants/' + b.dataset.detail).then(function (dr) {
+            if (dr.s !== 200) return;
+            var d = dr.j;
+            var users = (d.users || []).map(function (u) {
+              return '<li>' + esc(u.name) + ' — ' + esc(u.role) + (u.email ? ' · ' + esc(u.email) : ' · Magic-Link') +
+                ' · letzter Login: ' + (u.last_login_at ? dt(u.last_login_at) : 'nie') + '</li>';
+            }).join('');
+            var bill = d.subscription ? d.subscription.billing || {} : null;
+            row.style.display = '';
+            row.querySelector('.detail').innerHTML =
+              '<b>Nutzer (' + (d.users || []).length + '):</b><ul style="margin:4px 0 10px 18px;">' + users + '</ul>' +
+              (d.subscription ? '<b>Abo:</b> ' + esc(d.subscription.plan) + ' · ' + eur(d.subscription.price_eur) + '/Monat · ' +
+                esc((bill.payMethod === 'sepa' ? 'SEPA' : 'Rechnung')) + ' · ' + esc(bill.company || '') + ', ' + esc(bill.address || '') + ', ' +
+                esc(bill.zip || '') + ' ' + esc(bill.city || '') + (bill.ustId ? ' · USt-ID ' + esc(bill.ustId) : '') +
+                ' · Rechnungs-Mail: ' + esc(bill.email || '') + '<br>' : '<b>Abo:</b> keins<br>') +
+              '<b>Daten:</b> ' + (d.storageBytes / 1048576).toFixed(1) + ' MB · letzte Revision: ' +
+              ((d.revisions || [])[0] ? dt(d.revisions[0].created_at) : 'nie') +
+              '<br><b>Letzte Aktivität:</b> ' + ((d.recentAudit || []).slice(-3).map(function (a2) { return esc(a2.action) + ' (' + dt(a2.ts) + ')'; }).join(' · ') || '—');
+          });
+        };
+      });
     });
-    // Modul-Override togglen: aus effektiv → false; nicht effektiv → true; Override entfernen bei drittem Klick
-    el.querySelectorAll('.mod').forEach(function (m) {
-      m.onclick = function () {
-        var tid = m.dataset.tid, key = m.dataset.mod;
-        var t = tenants.find(function (x) { return x.id === tid; });
-        var ov = Object.assign({}, t.module_overrides || {});
-        if (typeof ov[key] === 'boolean') delete ov[key];           // Override entfernen → zurück zum Tarif
-        else ov[key] = (t.effective_modules || []).indexOf(key) < 0; // freischalten wenn aus, sperren wenn an
-        api('POST', '/api/admin/tenants/' + tid + '/modules', { overrides: ov }).then(load);
+  }
+
+  // ------------------------------------------------------------------ Vertriebs-Angebote
+  function renderOffers() {
+    api('GET', '/api/admin/sales-offers').then(function (r) {
+      var el = document.getElementById('content');
+      var planOpts = Object.keys(plans).filter(function (p) { return p !== 'TRIAL'; }).map(function (p) {
+        return '<option value="' + p + '">' + esc(plans[p].label) + ' (Listenpreis ' + plans[p].priceEur + ' €)</option>';
+      }).join('');
+      var rows = (r.j.offers || []).map(function (o) {
+        return '<tr><td><b>' + esc(o.company) + '</b><br><span class="muted">' + esc(o.contact_name || '') + ' · ' + esc(o.email) + (o.phone ? ' · ' + esc(o.phone) : '') + '</span></td>' +
+          '<td>' + esc((plans[o.plan] || {}).label || o.plan) + '<br><b>' + eur(o.price_eur) + '/M</b>' +
+          (plans[o.plan] && o.price_eur < plans[o.plan].priceEur ? ' <span class="muted">(statt ' + plans[o.plan].priceEur + ' €)</span>' : '') + '</td>' +
+          '<td><span class="st ' + esc(o.status) + '">' + esc(o.status) + '</span><br><span class="muted">gültig bis ' + dt(o.valid_until) +
+          (o.accepted_at ? ' · angenommen ' + dt(o.accepted_at) : '') + '</span></td>' +
+          '<td>' + (o.status === 'open' ? '<button class="small red" data-sorevoke="' + esc(o.id) + '">Widerrufen</button>' : (o.tenant_id ? '<span class="muted">→ ' + esc(o.tenant_id) + '</span>' : '')) + '</td></tr>';
+      }).join('');
+      el.innerHTML =
+        '<div class="card"><b style="font-size:14px;">📨 Neues Vertriebs-Angebot (für direkt beratene Kunden)</b>' +
+        '<div class="form-grid" style="margin-top:12px;">' +
+        '<div><label>Firma *</label><input id="soCompany"></div>' +
+        '<div><label>Ansprechpartner</label><input id="soName"></div>' +
+        '<div><label>E-Mail *</label><input id="soEmail" type="email"></div>' +
+        '<div><label>Telefon</label><input id="soPhone"></div>' +
+        '<div><label>Tarif *</label><select id="soPlan">' + planOpts + '</select></div>' +
+        '<div><label>Monatspreis € (leer = Listenpreis)</label><input id="soPrice" type="number" step="0.01" min="0" placeholder="z. B. 29"></div>' +
+        '</div>' +
+        '<label style="font-size:11px;font-weight:700;color:#456;display:block;margin:10px 0 3px;">Persönliche Nachricht (erscheint im Angebot)</label>' +
+        '<textarea id="soMsg" rows="2" style="width:100%;" placeholder="Hallo Herr Müller, wie besprochen …"></textarea>' +
+        '<div class="row" style="margin-top:10px;"><button class="green" id="soGo">Angebot erstellen → Link</button>' +
+        '<span class="muted">Gültigkeit: 14 Tage. Kunde schließt online verbindlich ab — Betrieb + Abo entstehen automatisch.</span></div>' +
+        '<div id="soOut"></div></div>' +
+        '<div class="card"><table><thead><tr><th>Interessent</th><th>Angebot</th><th>Status</th><th></th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="4" class="muted">Noch keine Vertriebs-Angebote.</td></tr>') + '</tbody></table></div>';
+
+      document.getElementById('soGo').onclick = function () {
+        var body = {
+          company: document.getElementById('soCompany').value,
+          contactName: document.getElementById('soName').value,
+          email: document.getElementById('soEmail').value,
+          phone: document.getElementById('soPhone').value,
+          plan: document.getElementById('soPlan').value,
+          message: document.getElementById('soMsg').value,
+        };
+        var pr = document.getElementById('soPrice').value;
+        if (pr !== '') body.priceEur = Number(pr);
+        api('POST', '/api/admin/sales-offers', body).then(function (cr) {
+          var out = document.getElementById('soOut');
+          if (cr.s !== 201) { out.innerHTML = '<div class="link-out" style="color:#c0392b;">Fehler: ' + esc(cr.j.error || cr.s) + '</div>'; return; }
+          var wa = 'https://wa.me/?text=' + encodeURIComponent('Hallo' + (body.contactName ? ' ' + body.contactName : '') +
+            ', hier ist Ihr persönliches WERKOS-Angebot für ' + body.company + ' (' + cr.j.priceEur + ' €/Monat) — online abschließbar:\n\n' + cr.j.url);
+          out.innerHTML = '<div class="link-out"><b>Angebots-Link (an den Kunden senden):</b><br>' + esc(cr.j.url) +
+            '<div class="row" style="margin-top:8px;"><button class="small" id="soCopy">📋 Kopieren</button>' +
+            '<a href="' + esc(wa) + '" target="_blank" rel="noopener"><button class="small green">🟢 WhatsApp</button></a>' +
+            '<span class="muted">gültig bis ' + dt(cr.j.validUntil) + '</span></div></div>';
+          document.getElementById('soCopy').onclick = function () { navigator.clipboard && navigator.clipboard.writeText(cr.j.url); this.textContent = '✓ Kopiert'; };
+          refreshKpis();
+          api('GET', '/api/admin/sales-offers'); // Liste beim nächsten Tab-Wechsel frisch
+        });
       };
+      el.querySelectorAll('[data-sorevoke]').forEach(function (b) {
+        b.onclick = function () { if (confirm('Angebot widerrufen?')) api('POST', '/api/admin/sales-offers/' + b.dataset.sorevoke + '/revoke').then(function () { renderOffers(); refreshKpis(); }); };
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------ Leads
+  function renderLeads() {
+    api('GET', '/api/admin/leads').then(function (r) {
+      var el = document.getElementById('content');
+      var rows = (r.j.leads || []).map(function (l) {
+        return '<tr><td><b>' + esc(l.name) + '</b><br><span class="muted">' + esc(l.company || '') + '</span></td>' +
+          '<td>' + esc(l.email) + (l.phone ? '<br><span class="muted">' + esc(l.phone) + '</span>' : '') + '</td>' +
+          '<td>' + esc(l.message || '—') + '</td>' +
+          '<td>' + esc(l.source) + '<br><span class="muted">' + dt(l.created_at) + ' · Consent: ' + dt(l.consent_at) + '</span></td>' +
+          '<td>' + (l.tenant_id ? '<span class="muted">' + esc(l.tenant_id) + '</span>' : '—') + '</td>' +
+          '<td><button class="small red" data-ldel="' + esc(l.id) + '">Löschen</button></td></tr>';
+      }).join('');
+      el.innerHTML = '<div class="card"><table><thead><tr><th>Kontakt</th><th>Erreichbar</th><th>Anliegen</th>' +
+        '<th>Quelle / Consent</th><th>Mandant</th><th></th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="6" class="muted">Noch keine Leads.</td></tr>') + '</tbody></table>' +
+        '<div class="muted" style="margin-top:8px;">DSGVO: Consent-Zeitpunkt + IP sind gespeichert. „Löschen" entfernt den Lead endgültig (Widerruf der Einwilligung).</div></div>';
+      el.querySelectorAll('[data-ldel]').forEach(function (b) {
+        b.onclick = function () { if (confirm('Lead endgültig löschen?')) api('DELETE', '/api/admin/leads/' + b.dataset.ldel).then(function () { renderLeads(); refreshKpis(); }); };
+      });
     });
   }
 
   document.getElementById('go').onclick = function () {
     token = document.getElementById('tok').value.trim();
-    if (token) load();
+    if (token) boot();
   };
-  document.getElementById('tok').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') document.getElementById('go').click();
-  });
-  if (token) load();
+  document.getElementById('tok').addEventListener('keydown', function (e) { if (e.key === 'Enter') document.getElementById('go').click(); });
+  if (token) boot();
 })();
 </script>
 </body>
