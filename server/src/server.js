@@ -33,6 +33,9 @@ function serveStatic(req, res, pathname) {
   else if (pathname === '/angebot') pathname = '/offer.html';       // öffentliche Angebotsseite
   else if (pathname === '/abo') pathname = '/abo.html';             // persönliches Vertriebs-Angebot
   else if (pathname === '/admin') pathname = '/admin.html';         // Betreiber-Konsole
+  else if (pathname === '/funktionen') pathname = '/funktionen.html';
+  else if (pathname === '/preise') pathname = '/preise.html';
+  else if (pathname === '/faq') pathname = '/faq.html';
   else if (pathname === '/impressum') pathname = '/impressum.html';
   else if (pathname === '/datenschutz') pathname = '/datenschutz.html';
   else if (pathname === '/favicon.ico') pathname = '/icons/icon-192.png';

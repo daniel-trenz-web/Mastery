@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funktionen — WERKOS | Zeiten, Aufträge, Angebote, Planung, Einkauf</title>
+<meta name="description" content="Alle WERKOS-Funktionen im Detail: Zeiterfassung ohne Accounts, Bautagebuch, Angebote mit digitaler Kunden-Unterschrift, Rechnungen, Einsatzplanung und Einkauf — DSGVO- & GoBD-konform.">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<meta name="theme-color" content="#12293f">
+<link rel="stylesheet" href="site.css">
+<style>
+  .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
+          padding: 34px 0; border-bottom: 1px solid var(--line); }
+  .feat:last-child { border-bottom: none; }
+  .feat .txt h3 { font-size: 22px; margin-bottom: 4px; }
+  .feat .txt .who { color: var(--green); font-weight: 700; font-size: 13px; margin-bottom: 10px; }
+  .feat .txt p { color: var(--mut); font-size: 14.5px; margin-bottom: 12px; }
+  .feat ul { list-style: none; }
+  .feat li { padding: 5px 0 5px 26px; position: relative; font-size: 14px; }
+  .feat li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; }
+  .feat li b { color: var(--ink); }
+  .feat .vis { background: var(--card); border: 1.5px solid var(--line); border-radius: 16px;
+               padding: 24px; box-shadow: var(--shadow); }
+  .feat .vis .head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .feat .vis .head .ic { width: 46px; height: 46px; border-radius: 12px; background: var(--green-soft);
+                         font-size: 23px; display: flex; align-items: center; justify-content: center; }
+  .feat .vis .head b { font-size: 15px; }
+  .feat .vis .head span { display: block; font-size: 11.5px; color: var(--soft); }
+  .demo-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px;
+              border: 1px solid var(--line); border-radius: 9px; margin-bottom: 7px; font-size: 13px; }
+  .demo-row .pill { font-size: 10.5px; font-weight: 800; padding: 2px 9px; border-radius: 9px; }
+  .pill.g { background: var(--green-soft); color: var(--green); }
+  .pill.y { background: #fff5df; color: #8a6d1a; }
+  .pill.r { background: #fdecea; color: #c0392b; }
+  .pill.b { background: #e3edf7; color: var(--navy2); }
+  .inkl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .inkl .i { background: var(--card); border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); }
+  .inkl .i b { display: block; margin-bottom: 5px; font-size: 14.5px; }
+  .inkl .i p { color: var(--mut); font-size: 13px; }
+  @media (max-width: 900px) {
+    .feat { grid-template-columns: 1fr; gap: 20px; }
+    .feat > * { min-width: 0; }
+    .feat .vis { order: -1; }
+    .inkl { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="site">
+  <div class="wrap">
+    <a class="logo" href="/"><span class="mark">W</span>WERKOS</a>
+    <div class="links">
+      <a href="/funktionen" class="on">Funktionen</a>
+      <a href="/preise">Preise</a>
+      <a href="/faq">FAQ</a>
+    </div>
+    <div class="cta">
+      <a class="btn ghost" href="/app">Anmelden</a>
+      <a class="btn primary" href="/#demo">Kostenlos testen</a>
+    </div>
+    <button class="burger" aria-label="Menü" aria-expanded="false">☰</button>
+  </div>
+  <div class="mobile-menu">
+    <a href="/funktionen" class="on">Funktionen</a>
+    <a href="/preise">Preise</a>
+    <a href="/faq">FAQ</a>
+    <a href="/app">Anmelden</a>
+    <a href="/#demo">Kostenlos testen</a>
+  </div>
+</nav>
+
+<header class="page-head">
+  <div class="wrap">
+    <span class="kicker">Funktionen im Detail</span>
+    <h1>Fünf Module, die zusammenarbeiten.</h1>
+    <p>Jedes Modul löst ein echtes Problem im Betriebsalltag — und weil alle auf einer Datenbasis
+       arbeiten, gibst du nichts doppelt ein: Die Stempelzeit landet im Auftrag, das angenommene
+       Angebot wird zum Projekt, die Rechnung entsteht per Klick.</p>
+  </div>
+</header>
+
+<section class="alt">
+  <div class="wrap">
+
+    <div class="feat">
+      <div class="txt">
+        <h3>⏱ Zeiten &amp; Team</h3>
+        <div class="who">In START, BETRIEB und BETRIEB PLUS</div>
+        <p>Arbeitszeiten erfassen, ohne dass dein Team sein Verhalten ändern muss — und die Lohnvorbereitung schrumpft von Stunden auf Minuten.</p>
+        <ul>
+          <li><b>Stempeln per Handy oder QR-Code</b> — Mitarbeiter brauchen weder Account noch Passwort, der Zugang kommt per Einladungs-Link</li>
+          <li><b>Mitarbeiter-Verwaltung</b> mit Rollen, Berechtigungen und Tagessätzen</li>
+          <li><b>Kolonnen/Teams</b> gruppieren und gemeinsam einsetzen</li>
+          <li><b>Wochen- und Monatsauswertungen</b> — Überstunden auf einen Blick</li>
+          <li><b>Ticket-System</b>: Anliegen des Teams landen geordnet bei dir statt im WhatsApp-Chaos</li>
+        </ul>
+      </div>
+      <div class="vis">
+        <div class="head"><span class="ic">⏱</span><div><b>Woche KW 28 — Kolonne Nord</b><span>3 Mitarbeiter · Baustelle Müller</span></div></div>
+        <div class="demo-row"><span>Mo · A. Yilmaz</span><span>07:00–15:30 · 8,0 h <span class="pill g">✓</span></span></div>
+        <div class="demo-row"><span>Mo · P. Krause</span><span>07:00–16:15 · 8,75 h <span class="pill y">+0,75</span></span></div>
+        <div class="demo-row"><span>Di · A. Yilmaz</span><span>06:45–15:00 · 7,75 h <span class="pill g">✓</span></span></div>
+        <div class="demo-row"><span>Wochensumme Team</span><b>68,5 h · 3 MA</b></div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <div class="txt">
+        <h3>📁 Aufträge &amp; Baustelle</h3>
+        <div class="who">In BETRIEB und BETRIEB PLUS</div>
+        <p>Alles zu jedem Auftrag an einem Ort — und die ehrliche Antwort auf die Frage: <i>Verdiene ich an diesem Auftrag Geld?</i></p>
+        <ul>
+          <li><b>Bautagebuch &amp; Berichte</b> mit Fotos, eigenen Vorlagen und Unterschrift auf dem Gerät</li>
+          <li><b>Mängelverwaltung</b> mit Fotos, Zuständigkeiten, Fristen und Status</li>
+          <li><b>Leistungsverzeichnisse</b> anlegen, importieren und in Aufträgen nutzen</li>
+          <li><b>Controlling-Cockpit</b>: Plan/Ist je Projekt — Stunden und Material live gegen die Kalkulation</li>
+          <li><b>Auftrags-Ampel</b>: Grün/Gelb/Rot warnt, bevor ein Auftrag ins Minus dreht</li>
+        </ul>
+      </div>
+      <div class="vis">
+        <div class="head"><span class="ic">🎯</span><div><b>Controlling — laufende Projekte</b><span>Plan/Ist heute 14:30</span></div></div>
+        <div class="demo-row"><span>Bad-Sanierung Müller</span><span class="pill g">im Plan · 62 %</span></div>
+        <div class="demo-row"><span>Dachstuhl Schulz</span><span class="pill y">85 % Kosten · 70 % fertig</span></div>
+        <div class="demo-row"><span>Anbau Klein</span><span class="pill r">Budget überschritten</span></div>
+        <div class="demo-row"><span>Fassade Weber</span><span class="pill b">startet KW 30</span></div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <div class="txt">
+        <h3>💶 Angebote &amp; Rechnungen</h3>
+        <div class="who">In BETRIEB und BETRIEB PLUS</div>
+        <p>Vom Aufmaß zum bezahlten Geld — ohne Word, ohne PDF-Pingpong. Mit dem Kunden-Link, den es so nur bei WERKOS gibt.</p>
+        <ul>
+          <li><b>Angebote</b> mit Positionen, Gewerken, Kalkulation und PDF im eigenen Briefkopf</li>
+          <li><b>📲 Kunden-Link mit digitaler Unterschrift</b>: per WhatsApp teilen, Kunde nimmt mobil verbindlich an — Name, Zeitstempel und Unterschrift revisionssicher gespeichert</li>
+          <li><b>Angebots-Board</b>: Entwurf → versendet → angenommen → Projekt, mit Annahme-Quote</li>
+          <li><b>Angebot → Projekt → Rechnung</b> jeweils per Klick, ohne Doppeleingabe</li>
+          <li><b>Rechnungen, Gutschriften, Mahnwesen</b> und offene-Posten-Liste</li>
+        </ul>
+      </div>
+      <div class="vis">
+        <div class="head"><span class="ic">📨</span><div><b>Angebote — Juli</b><span>Annahme-Quote 67 %</span></div></div>
+        <div class="demo-row"><span>AN-2026-0099 · Fassade EFH</span><span class="pill g">✍ vom Kunden signiert</span></div>
+        <div class="demo-row"><span>AN-2026-0101 · Bad komplett</span><span class="pill y">wartet auf Kunde</span></div>
+        <div class="demo-row"><span>AN-2026-0102 · Carport</span><span class="pill b">Entwurf</span></div>
+        <div class="demo-row"><span>Offenes Volumen</span><b>18.640 €</b></div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <div class="txt">
+        <h3>📅 Einsatzplanung</h3>
+        <div class="who">In BETRIEB PLUS</div>
+        <p>Wer arbeitet wann wo? Die Plantafel beantwortet es per Drag &amp; Drop — und dein Team sieht seinen Plan sofort auf dem Handy.</p>
+        <ul>
+          <li><b>Kalender/Plantafel</b>: Mitarbeiter und Aufträge ziehen statt telefonieren</li>
+          <li><b>Urlaub &amp; Abwesenheiten</b> — genehmigte Abwesenheit blockt die Planung automatisch</li>
+          <li><b>Team-Zugriff ohne App-Zwang</b>: Plan per Link, Änderungen sofort sichtbar</li>
+          <li><b>Wochenvorlagen</b> für wiederkehrende Einsätze und Wartungstermine</li>
+        </ul>
+      </div>
+      <div class="vis">
+        <div class="head"><span class="ic">📅</span><div><b>Plantafel KW 29</b><span>Drag &amp; Drop</span></div></div>
+        <div class="demo-row"><span>Mo–Mi · Kolonne Nord</span><span class="pill b">Baustelle Müller</span></div>
+        <div class="demo-row"><span>Mo–Fr · Kolonne Süd</span><span class="pill b">Dachstuhl Schulz</span></div>
+        <div class="demo-row"><span>Do · A. Yilmaz</span><span class="pill y">Urlaub 🏖</span></div>
+        <div class="demo-row"><span>Fr · Alle</span><span class="pill g">Materialtag / Lager</span></div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <div class="txt">
+        <h3>🛒 Einkauf &amp; Lager</h3>
+        <div class="who">In BETRIEB PLUS</div>
+        <p>Material im Griff, Einkaufskosten im Blick — vom Lieferanten bis zur Eingangsrechnung, die automatisch am richtigen Auftrag landet.</p>
+        <ul>
+          <li><b>Lieferanten &amp; Materiallisten</b> zentral gepflegt</li>
+          <li><b>Bestellungen</b> erstellen und nachverfolgen</li>
+          <li><b>Eingangsrechnungen</b> erfassen und Aufträgen zuordnen — die Kosten fließen ins Controlling</li>
+          <li><b>Lager light</b>: Bestände, Inventur, Verbrauchsanalyse</li>
+        </ul>
+      </div>
+      <div class="vis">
+        <div class="head"><span class="ic">🛒</span><div><b>Einkauf — offene Vorgänge</b><span>3 Bestellungen · 2 Rechnungen</span></div></div>
+        <div class="demo-row"><span>Bestellung · Raab Karcher</span><span class="pill y">Lieferung KW 29</span></div>
+        <div class="demo-row"><span>ER 2026-341 · 1.284 €</span><span class="pill g">→ Projekt Müller</span></div>
+        <div class="demo-row"><span>Silikon weiß · Lager</span><span class="pill r">nur noch 4 Kartuschen</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="tag">Immer inklusive</span>
+      <h2>In jedem Tarif automatisch dabei</h2>
+    </div>
+    <div class="inkl">
+      <div class="i"><b>🇩🇪 Hosting in Deutschland</b><p>Alle Daten liegen ausschließlich auf Servern in Deutschland — mit täglichen Backups.</p></div>
+      <div class="i"><b>🔒 GoBD-Archiv</b><p>Unveränderliche Datenrevisionen, versionierte Belege und ein manipulationssicherer Audit-Trail mit Prüf-Funktion.</p></div>
+      <div class="i"><b>📦 DSGVO-Export per Klick</b><p>Deine kompletten Daten jederzeit als ZIP — auch nach Kündigung. Kein Lock-in.</p></div>
+      <div class="i"><b>👓 Steuerberater-Zugang</b><p>Lesezugriff per Link für Kanzlei oder Buchhaltung — ohne zusätzliche Kosten.</p></div>
+      <div class="i"><b>📱 Läuft überall</b><p>Browser, Handy, Tablet — als installierbare App (PWA), auch auf der Baustelle.</p></div>
+      <div class="i"><b>🧩 Module wachsen mit</b><p>Tarifwechsel schaltet Module sofort frei — deine Daten bleiben, nichts wird neu eingegeben.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>Überzeug dich selbst — mit deinem eigenen Betrieb.</h2>
+      <p>14 Tage kostenlos, alle Module, mit Beispieldaten. Ohne Zahlungsdaten, endet automatisch.</p>
+      <a class="btn primary big" href="/#demo">🚀 Demo-Zugang anlegen</a>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="logo" href="/" style="margin-bottom:10px;"><span class="mark">W</span>WERKOS</a>
+        <p style="max-width:330px; margin-top:10px;">Das modulare Betriebssystem für Kleinstbetriebe.
+        Entwickelt für Handwerk &amp; Bau — gehostet und betrieben in Deutschland.</p>
+      </div>
+      <div>
+        <h4>Produkt</h4>
+        <a href="/funktionen">Funktionen</a>
+        <a href="/preise">Preise</a>
+        <a href="/faq">FAQ</a>
+        <a href="/app">Anmelden</a>
+      </div>
+      <div>
+        <h4>Rechtliches</h4>
+        <a href="/impressum">Impressum</a>
+        <a href="/datenschutz">Datenschutz</a>
+        <a href="mailto:kontakt@werkos.example.de">kontakt@werkos.example.de</a>
+      </div>
+    </div>
+    <div class="fin">
+      <span>© 2026 WERKOS · Alle Preise zzgl. gesetzlicher USt.</span>
+      <span>🇩🇪 Server &amp; Support in Deutschland</span>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+</body>
+</html>
