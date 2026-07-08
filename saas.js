@@ -451,9 +451,12 @@
         var trialDays = t.trialEndsAt ? Math.max(0, Math.ceil((new Date(t.trialEndsAt) - Date.now()) / 864e5)) : 0;
         var modNames = (t.modules || []).map(function (m) { return (t.moduleCatalog[m] || {}).label || m; });
         var roleNames = { owner: 'Inhaber', office: 'Büro', employee: 'Mitarbeiter', external: 'Steuerberater (lesend)' };
+        var sub = t.subscription;
         var html = '<h3>' + esc(t.name) + '</h3>' +
           '<div class="wa-row">👤 ' + esc(a.user.name) + ' · ' + esc(roleNames[a.user.role] || a.user.role) + '</div>' +
-          '<div class="wa-row">📦 <b>' + esc(t.planLabel) + '</b>' + (t.plan === 'TRIAL' ? ' — noch ' + trialDays + ' Tage kostenlos' : '') + '</div>' +
+          '<div class="wa-row">📦 <b>' + esc(t.planLabel) + '</b>' +
+          (t.plan === 'TRIAL' ? ' — noch ' + trialDays + ' Tage kostenlos' :
+            (sub ? ' — Abo aktiv: ' + Number(sub.priceEur).toLocaleString('de-DE') + ' €/Monat (' + (sub.payMethod === 'sepa' ? 'SEPA' : 'auf Rechnung') + ')' : '')) + '</div>' +
           '<div class="wa-row">🧩 ' + esc(modNames.join(' · ') || 'keine Module') + '</div>' +
           '<div class="wa-row">🗄 ' + (a.storageBytes / 1048576).toFixed(1) + ' MB von ' + t.storageGb + ' GB belegt</div>';
         if (t.trialExpired) html += '<div class="wa-warn">⚠ Testphase abgelaufen — bitte Tarif wählen, um weiterzuarbeiten. Deine Daten bleiben erhalten und exportierbar.</div>';
@@ -487,6 +490,7 @@
         html += '<div class="wa-sec">' +
           (isOwner ? '<button class="wa-act" id="waExport">⬇ DSGVO/GoBD-Datenexport (ZIP)</button>' : '') +
           '<button class="wa-act" id="waVerify">🔍 GoBD-Prüfkette verifizieren</button>' +
+          (isOwner && sub ? '<button class="wa-act" id="waCancelSub">Abo kündigen …</button>' : '') +
           (isOwner ? '<button class="wa-act danger" id="waDelete">Konto &amp; alle Daten löschen …</button>' : '') +
           '<button class="wa-act" id="waLogout">🚪 Abmelden</button></div>';
         panel.innerHTML = html;
@@ -521,21 +525,83 @@
           };
         });
 
-        panel.querySelectorAll('.wa-plan').forEach(function (card) {
-          card.onclick = function () {
-            if (card.classList.contains('current')) return;
-            if (!confirm('Tarif „' + card.dataset.plan.replace('_', ' ') + '" aktivieren?\nDie zugehörigen Module werden sofort freigeschaltet.')) return;
-            authed('POST', '/billing/choose-plan', { plan: card.dataset.plan }).then(function (pr) {
-              if (pr.status === 200) {
+        // KAUF: Tarifkarte → Checkout mit Rechnungsdaten + AGB/AVV-Zustimmung
+        function showCheckout(planKey) {
+          var p = a.plans[planKey];
+          var billing = (a.user.email || '');
+          panel.innerHTML = '<h3>🛒 ' + esc(p.label) + ' abschließen</h3>' +
+            '<div class="wa-row">' + p.priceEur + ' €/Monat pauschal zzgl. USt · monatlich kündbar · Module sofort frei</div>' +
+            '<div class="wa-sec"><b>Rechnungsdaten</b>' +
+            '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Firma *</label>' +
+            '<input id="ckCompany" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(t.name) + '">' +
+            '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Straße &amp; Nr. *</label>' +
+            '<input id="ckAddress" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;">' +
+            '<div style="display:flex;gap:8px;">' +
+            '<div style="flex:1;"><label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">PLZ *</label>' +
+            '<input id="ckZip" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;"></div>' +
+            '<div style="flex:2;"><label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Ort *</label>' +
+            '<input id="ckCity" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;"></div></div>' +
+            '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Rechnungs-E-Mail *</label>' +
+            '<input id="ckEmail" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(billing) + '">' +
+            '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">USt-IdNr. (optional)</label>' +
+            '<input id="ckUst" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" placeholder="DE…">' +
+            '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Zahlweise</label>' +
+            '<select id="ckPay" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;">' +
+            '<option value="invoice">Kauf auf Rechnung (14 Tage Ziel)</option>' +
+            '<option value="sepa">SEPA-Lastschrift (Mandat folgt per E-Mail)</option></select>' +
+            '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:11.5px;color:#5b6b7c;line-height:1.5;">' +
+            '<input type="checkbox" id="ckTerms" style="width:16px;height:16px;margin-top:2px;flex:none;">' +
+            '<span>Ich schließe das Abo verbindlich ab (monatlich kündbar) und stimme dem Auftragsverarbeitungsvertrag zu. *</span></div>' +
+            '<button class="wa-act primary" id="ckGo" style="margin-top:12px;text-align:center;">✅ Kostenpflichtig abschließen — ' + p.priceEur + ' €/Monat</button>' +
+            '<div id="ckErr" style="color:#c0392b;font-size:12px;font-weight:600;min-height:14px;margin-top:6px;"></div>' +
+            '<button class="wa-act" id="ckBack">← Zurück</button></div>';
+          panel.querySelector('#ckBack').onclick = renderPanel;
+          panel.querySelector('#ckGo').onclick = function () {
+            var errEl = panel.querySelector('#ckErr');
+            if (!panel.querySelector('#ckTerms').checked) { errEl.textContent = 'Bitte der Abo- und AVV-Zustimmung bestätigen.'; return; }
+            var btn = this; btn.disabled = true; btn.textContent = '⏳ Abschluss läuft …';
+            authed('POST', '/billing/checkout', {
+              plan: planKey, acceptTerms: true,
+              billing: {
+                company: panel.querySelector('#ckCompany').value,
+                address: panel.querySelector('#ckAddress').value,
+                zip: panel.querySelector('#ckZip').value,
+                city: panel.querySelector('#ckCity').value,
+                email: panel.querySelector('#ckEmail').value,
+                ustId: panel.querySelector('#ckUst').value,
+                payMethod: panel.querySelector('#ckPay').value,
+              },
+            }).then(function (pr) {
+              if (pr.status === 201) {
                 var s2 = getSession(); s2.tenant = Object.assign({}, s2.tenant, pr.data.tenant); setSession(s2);
                 applyModules();
                 if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
-                toast('✓ Tarif aktiviert — Module wurden freigeschaltet.');
+                toast('🎉 ' + (pr.data.hint || 'Abo aktiv — Module freigeschaltet.'));
                 renderPanel();
-              } else alert('Fehler: ' + ((pr.data && pr.data.error) || pr.status));
+              } else {
+                btn.disabled = false; btn.textContent = '✅ Kostenpflichtig abschließen — ' + p.priceEur + ' €/Monat';
+                var map = { 'address-required': 'Bitte Adresse vollständig angeben.', 'invalid-email': 'Bitte gültige Rechnungs-E-Mail angeben.', 'invalid-company': 'Bitte Firma angeben.', 'terms-required': 'Bitte Zustimmung bestätigen.' };
+                errEl.textContent = map[pr.data.error] || ('Fehler: ' + (pr.data.error || pr.status));
+              }
             });
           };
+        }
+        panel.querySelectorAll('.wa-plan').forEach(function (card) {
+          card.onclick = function () {
+            if (card.classList.contains('current')) return;
+            showCheckout(card.dataset.plan);
+          };
         });
+
+        var bcs = panel.querySelector('#waCancelSub');
+        if (bcs) bcs.onclick = function () {
+          var pw = prompt('Abo wirklich kündigen?\nDein Betrieb fällt in den Lese-Modus zurück (Export bleibt jederzeit möglich).\n\nZum Bestätigen Passwort eingeben:');
+          if (!pw) return;
+          authed('POST', '/billing/cancel', { password: pw }).then(function (cr) {
+            if (cr.status === 200) { toast(cr.data.hint || 'Abo gekündigt.'); refreshSession().then(renderPanel); }
+            else alert('Fehler: ' + ((cr.data && cr.data.error) || cr.status));
+          });
+        };
 
         var bx = panel.querySelector('#waExport');
         if (bx) bx.onclick = function () {
