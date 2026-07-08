@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # publish-root aktualisiert die statischen Dateien im Repo-Root
   pages: write
   id-token: write
 
@@ -43,3 +43,20 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Fallback für den "Deploy from a branch"-Modus: hält die statische Website
+  # im Repo-Root von main aktuell (Pages-Quelle main/(root) liefert sie dann aus).
+  publish-root:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node tools/build-static-site.js
+      - name: Root-Dateien aktualisieren und committen
+        run: |
+          cp -r dist-static/* .
+          cp dist-static/.nojekyll .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .nojekyll index.html app.html saas.js impressum.html datenschutz.html manifest.webmanifest icons lib
+          git diff --cached --quiet || { git commit -m "Statische Website im Root aktualisiert [skip ci]"; git push; }
