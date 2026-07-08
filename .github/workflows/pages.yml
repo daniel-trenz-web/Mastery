@@ -58,5 +58,6 @@ jobs:
           cp dist-static/.nojekyll .
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .nojekyll index.html app.html saas.js impressum.html datenschutz.html manifest.webmanifest icons lib
+          # Dateiliste DYNAMISCH aus dem Build — neue Seiten werden nie vergessen
+          git add .nojekyll $(ls dist-static)
           git diff --cached --quiet || { git commit -m "Statische Website im Root aktualisiert [skip ci]"; git push; }
