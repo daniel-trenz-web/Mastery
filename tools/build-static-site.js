@@ -95,7 +95,7 @@ fs.writeFileSync(path.join(OUT, 'app.html'), app);
 // ---------------------------------------------------------------------------
 // 3) Assets, Manifest
 // ---------------------------------------------------------------------------
-for (const f of ['saas.js', 'site.css', 'site.js']) {
+for (const f of ['saas.js', 'site.css', 'site.js', 'logo.svg', 'logo-icon.svg']) {
   fs.copyFileSync(path.join(WEB, f), path.join(OUT, f));
 }
 copyDir(path.join(WEB, 'lib'), path.join(OUT, 'lib'));
