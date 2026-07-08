@@ -1,0 +1,53 @@
+# WERKOS — Produktions-Setup für einen Hetzner-Server (Deutschland).
+# Start:  cp .env.example .env  →  Werte setzen  →  docker compose up -d
+services:
+  werkos:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      - WERKOS_SECRET=${WERKOS_SECRET:?WERKOS_SECRET muss gesetzt sein (z.B. openssl rand -base64 48)}
+      - WERKOS_ADMIN_TOKEN=${WERKOS_ADMIN_TOKEN:-}
+      - WERKOS_BASE_URL=${WERKOS_BASE_URL:-https://app.example.de}
+    volumes:
+      - werkos-data:/data
+    networks: [web]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - WERKOS_DOMAIN=${WERKOS_DOMAIN:?WERKOS_DOMAIN setzen, z.B. app.example.de}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [web]
+
+  # Tägliches verschlüsselbares Backup der SQLite-DB + Secret (GoBD: Datensicherung).
+  # Ziel-Verzeichnis per Volume auf Host mounten und z.B. via restic/borg extern sichern.
+  backup:
+    image: alpine:3
+    restart: unless-stopped
+    volumes:
+      - werkos-data:/data:ro
+      - ./backups:/backups
+    command: >
+      sh -c 'while true; do
+        ts=$$(date +%Y%m%d-%H%M%S);
+        cp /data/werkos.sqlite /backups/werkos-$$ts.sqlite 2>/dev/null;
+        ls -t /backups/werkos-*.sqlite 2>/dev/null | tail -n +31 | xargs -r rm;
+        sleep 86400;
+      done'
+
+volumes:
+  werkos-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:

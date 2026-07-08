@@ -7,7 +7,10 @@
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-<title>Projektplanung und Kalkulation — V6.3 (modular)</title>
+<title>WERKOS — Dein Betrieb in einer App</title>
+<!-- WERKOS SaaS: Login/Registrierung, Mandanten-Session, Konto-Widget.
+     Muss VOR dem App-Code geladen werden. -->
+<script src="saas.js"></script>
 <meta name="theme-color" content="#1a3a5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -52250,6 +52253,9 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     // V5.2: Demo-Daten beim allerersten Start laden
     try { await loadDemoIfEmpty(); } catch(e) { console.warn('Demo-Init:', e); }
     await loadState();
+    // WERKOS SaaS: Server-Konfiguration kommt aus der Login-Session (saas.js) und
+    // überschreibt manuelle Einstellungen, solange eine SaaS-Sitzung aktiv ist.
+    try { if (window.WERKOS && typeof WERKOS.applyServerConfig === 'function') WERKOS.applyServerConfig(); } catch(e) {}
     // V10.3: Signal an Auto-Save-Layer, dass State geladen ist
     window.__appLoadedAt = Date.now();
     document.dispatchEvent(new CustomEvent('app-state-loaded'));
