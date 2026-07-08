@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WERKOS — Admin-Zentrale</title>
+<title>werkflow — Admin-Zentrale</title>
 <meta name="robots" content="noindex">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,7 +66,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>🛠 WERKOS — Admin-Zentrale</h1>
+  <h1>🛠 werkflow — Admin-Zentrale</h1>
   <div class="sub">Kunden, Abos, Demo-Zugänge, Leads &amp; Vertriebs-Angebote. Zugriff nur mit Admin-Token (<code>WERKOS_ADMIN_TOKEN</code>).</div>
   <div class="card" id="loginCard">
     <div class="row">
@@ -280,7 +280,7 @@
           var out = document.getElementById('soOut');
           if (cr.s !== 201) { out.innerHTML = '<div class="link-out" style="color:#c0392b;">Fehler: ' + esc(cr.j.error || cr.s) + '</div>'; return; }
           var wa = 'https://wa.me/?text=' + encodeURIComponent('Hallo' + (body.contactName ? ' ' + body.contactName : '') +
-            ', hier ist Ihr persönliches WERKOS-Angebot für ' + body.company + ' (' + cr.j.priceEur + ' €/Monat) — online abschließbar:\n\n' + cr.j.url);
+            ', hier ist Ihr persönliches werkflow-Angebot für ' + body.company + ' (' + cr.j.priceEur + ' €/Monat) — online abschließbar:\n\n' + cr.j.url);
           out.innerHTML = '<div class="link-out"><b>Angebots-Link (an den Kunden senden):</b><br>' + esc(cr.j.url) +
             '<div class="row" style="margin-top:8px;"><button class="small" id="soCopy">📋 Kopieren</button>' +
             '<a href="' + esc(wa) + '" target="_blank" rel="noopener"><button class="small green">🟢 WhatsApp</button></a>' +

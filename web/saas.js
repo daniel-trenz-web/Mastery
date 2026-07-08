@@ -97,7 +97,7 @@
   }
 
   function logout() {
-    if (!confirm('Von WERKOS abmelden?')) return;
+    if (!confirm('Von werkflow abmelden?')) return;
     var s = getSession();
     var done = function () { clearSession(); location.reload(); };
     if (s) req('POST', '/auth/logout', {}, s.accessToken).then(done, done); else done();
@@ -147,7 +147,7 @@
     if (lock && !lock._werkos) {
       lock._werkos = true;
       lock.textContent = 'Abmelden';
-      lock.title = 'Von WERKOS abmelden';
+      lock.title = 'Von werkflow abmelden';
       lock.addEventListener('click', function (e) {
         e.stopImmediatePropagation(); e.preventDefault();
         logout();
@@ -175,7 +175,7 @@
   }
 
   function shareAngebot(angId) {
-    if (STATIC) { toast('🧪 Demo-Modus: Kunden-Links brauchen den WERKOS-Server (siehe Anleitung).'); return; }
+    if (STATIC) { toast('🧪 Demo-Modus: Kunden-Links brauchen den werkflow-Server (siehe Anleitung).'); return; }
     var st = window.state || {};
     var ang = (st.angebote || []).find(function (a) { return a.id === angId; });
     if (!ang) { toast('Angebot nicht gefunden.'); return; }
@@ -199,7 +199,7 @@
     var html = '<h2>📲 Angebot ' + esc(ang.number) + ' teilen</h2>' +
       '<p style="font-size:13px;color:#567;">Der Kunde öffnet den Link, sieht das Angebot und kann es <b>direkt digital unterschreiben und annehmen</b>. Die Antwort erscheint automatisch hier im System.</p>' +
       '<div style="background:#f4f7fa;border:1px solid #e0e7ee;border-radius:9px;padding:10px;font-size:12px;word-break:break-all;" id="wkShareUrl">' + esc(url) + '</div>' +
-      '<div style="font-size:11px;color:#889;margin-top:4px;">Gültig bis ' + esc(new Date(expiresAt).toLocaleDateString('de-DE')) + ' · jederzeit widerrufbar (WERKOS-Menü unten links)</div>' +
+      '<div style="font-size:11px;color:#889;margin-top:4px;">Gültig bis ' + esc(new Date(expiresAt).toLocaleDateString('de-DE')) + ' · jederzeit widerrufbar (werkflow-Menü unten links)</div>' +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">' +
       '<a href="' + esc(wa) + '" target="_blank" rel="noopener" style="text-decoration:none;"><button class="success" style="background:#25D366;">🟢 Per WhatsApp senden</button></a>' +
       '<button class="secondary" id="wkCopyBtn">📋 Link kopieren</button>' +
@@ -321,16 +321,18 @@
   }
 
   function gateHtml(inviteToken) {
-    var logo = '<div class="wg-logo">W</div>';
+    var logo = '<div class="wg-logo"><svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">' +
+      '<defs><linearGradient id="wfg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#3fcf7f"/></linearGradient></defs>' +
+      '<path d="M 12 38 C 17 72, 29 74, 36 52 C 41 40, 47 40, 52 52 C 59 74, 71 72, 78 46 L 90 24" fill="none" stroke="url(#wfg)" stroke-width="12" stroke-linecap="round"/></svg></div>';
     if (inviteToken) {
       return '<div class="wg-card">' + logo +
-        '<h1>Willkommen im Team!</h1><div class="wg-sub">Du wurdest zu einem Betrieb bei WERKOS eingeladen. Kein Passwort nötig — dein Zugang läuft über diesen Link.</div>' +
+        '<h1>Willkommen im Team!</h1><div class="wg-sub">Du wurdest zu einem Betrieb bei werkflow eingeladen. Kein Passwort nötig — dein Zugang läuft über diesen Link.</div>' +
         '<label>Dein Name</label><input id="wgName" placeholder="Vor- und Nachname" autocomplete="name">' +
         '<button class="wg-btn" id="wgJoin">Betrieb beitreten</button>' +
         '<div class="wg-err" id="wgErr"></div></div>';
     }
     return '<div class="wg-card">' + logo +
-      '<h1>WERKOS</h1><div class="wg-sub">Dein ganzer Betrieb in einer App — ein Preis pro Betrieb, egal wie viele Mitarbeiter.</div>' +
+      '<h1>werk<span style=\'color:#1e8449\'>flow</span></h1><div class="wg-sub">Dein ganzer Betrieb in einer App — ein Preis pro Betrieb, egal wie viele Mitarbeiter.</div>' +
       '<div class="wg-tabs"><button class="wg-tab on" data-t="login">Anmelden</button><button class="wg-tab" data-t="reg">Betrieb registrieren</button></div>' +
       '<div id="wgLogin">' +
       '<label>E-Mail</label><input id="wgEmail" type="email" autocomplete="username" placeholder="chef@betrieb.de">' +

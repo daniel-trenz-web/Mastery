@@ -7,15 +7,15 @@
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-<title>WERKOS — Dein Betrieb in einer App</title>
-<!-- WERKOS SaaS: Login/Registrierung, Mandanten-Session, Konto-Widget.
+<title>werkflow — Dein Betrieb in einer App</title>
+<!-- werkflow SaaS: Login/Registrierung, Mandanten-Session, Konto-Widget.
      Muss VOR dem App-Code geladen werden. -->
 <script src="saas.js"></script>
 <meta name="theme-color" content="#1a3a5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Planungstool">
-<link rel="manifest" href='data:application/manifest+json,{"name":"Projektplanung und Kalkulation","short_name":"Planungstool","start_url":".","display":"standalone","background_color":"%23f5f6f8","theme_color":"%231a3a5c","description":"Handwerks-Betriebssystem (Einzelnutzer V1.1) — Projekte, Angebote, Rechnungen, Stundenzettel.","icons":[{"src":"data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22%3E%3Crect width=%22192%22 height=%22192%22 rx=%2228%22 fill=%22%231a3a5c%22/%3E%3Ctext x=%2296%22 y=%22128%22 font-size=%22112%22 text-anchor=%22middle%22 fill=%22white%22%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml","purpose":"any maskable"}]}'>
+<meta name="apple-mobile-web-app-title" content="werkflow">
+<link rel="manifest" href='data:application/manifest+json,{"name":"Projektplanung und Kalkulation","short_name":"werkflow","start_url":".","display":"standalone","background_color":"%23f5f6f8","theme_color":"%231a3a5c","description":"Handwerks-Betriebssystem (Einzelnutzer V1.1) — Projekte, Angebote, Rechnungen, Stundenzettel.","icons":[{"src":"data:image/svg+xml;utf8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 192 192%22%3E%3Crect width=%22192%22 height=%22192%22 rx=%2228%22 fill=%22%231a3a5c%22/%3E%3Ctext x=%2296%22 y=%22128%22 font-size=%22112%22 text-anchor=%22middle%22 fill=%22white%22%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E","sizes":"192x192","type":"image/svg+xml","purpose":"any maskable"}]}'>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -4694,7 +4694,7 @@
   <aside class="sidenav" id="sidenav">
     <div class="sidenav-brand">
       <div class="logo">📊</div>
-      <div class="name" id="sidenavBrandName"><span id="sidenavBrandTitle">Planungstool</span><span class="sub" id="sidenavBrandSub">Eigenst. System v1</span></div>
+      <div class="name" id="sidenavBrandName"><span id="sidenavBrandTitle">werkflow</span><span class="sub" id="sidenavBrandSub">Eigenst. System v1</span></div>
       <button type="button" class="sidenav-close" onclick="closeMobileNav()" title="Menü schließen" aria-label="Menü schließen">×</button>
     </div>
     <div id="sidenavContent" style="flex:1; display:flex; flex-direction:column;"></div>
@@ -8935,7 +8935,7 @@
     const b = (state && state.appBranding) || {};
     const titleEl = document.getElementById('sidenavBrandTitle');
     const subEl   = document.getElementById('sidenavBrandSub');
-    const title = (typeof b.title === 'string' ? b.title : 'Planungstool').trim() || 'Planungstool';
+    const title = (typeof b.title === 'string' ? b.title : 'werkflow').trim() || 'werkflow';
     const sub   = (typeof b.subtitle === 'string' ? b.subtitle : '').trim();
     if (titleEl) titleEl.textContent = title;
     if (subEl) {
@@ -16487,7 +16487,7 @@
         <div class="row2">
           <div>
             <label>Titel (oben im Menü)</label>
-            <input type="text" id="appBrandTitle" value="${escapeHtml(state.appBranding?.title ?? 'Planungstool')}" placeholder="z.B. Mein Betrieb" maxlength="40">
+            <input type="text" id="appBrandTitle" value="${escapeHtml(state.appBranding?.title ?? 'werkflow')}" placeholder="z.B. Mein Betrieb" maxlength="40">
           </div>
           <div>
             <label>Untertitel (kleiner Text darunter)</label>
@@ -25418,13 +25418,13 @@
   window.saveAppBranding = async function() {
     const title = (document.getElementById('appBrandTitle')?.value || '').trim();
     const subtitle = (document.getElementById('appBrandSubtitle')?.value || '').trim();
-    state.appBranding = { title: title || 'Planungstool', subtitle };
+    state.appBranding = { title: title || 'werkflow', subtitle };
     await saveState();
     try { applyAppBranding(); } catch(e) {}
     alert('✅ Branding gespeichert');
   };
   window.resetAppBranding = async function() {
-    state.appBranding = { title: 'Planungstool', subtitle: 'Eigenst. System v1' };
+    state.appBranding = { title: 'werkflow', subtitle: 'Eigenst. System v1' };
     await saveState();
     try { applyAppBranding(); } catch(e) {}
     render();
@@ -50366,7 +50366,7 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
 
   function _obStep1() {
     return `
-      <h3>👋 Willkommen bei Deinem Planungstool!</h3>
+      <h3>👋 Willkommen bei werkflow!</h3>
       <p class="hint">In wenigen Schritten ist Dein System einsatzbereit. Du kannst diesen Assistenten jederzeit über <strong>Einstellungen → 🪄 Onboarding</strong> wiederholen oder mit „Überspringen" abbrechen.</p>
       <div style="background:var(--color-primary-soft); padding:14px; border-radius:8px; margin:14px 0;">
         <strong style="color:var(--color-primary);">💡 In den nächsten Minuten richten wir ein:</strong>

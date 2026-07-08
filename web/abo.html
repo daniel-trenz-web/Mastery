@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Dein persönliches WERKOS-Angebot</title>
+<title>Dein persönliches werkflow-Angebot</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <style>
@@ -16,6 +16,7 @@
            margin-bottom: 18px; justify-content: center; }
   .brand .mark { width: 34px; height: 34px; border-radius: 9px; background: #fff; color: #12293f;
                  display: flex; align-items: center; justify-content: center; font-weight: 900; }
+  .brand .flow-txt { color: #4fd483; }
   .card { background: #fff; border-radius: 16px; box-shadow: 0 24px 64px rgba(0,0,0,.4); padding: 28px;
           margin-bottom: 14px; }
   h1 { font-size: 22px; color: #16324e; margin-bottom: 4px; }
@@ -51,7 +52,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="brand"><span class="mark">W</span>WERKOS</div>
+  <div class="brand"><span class="mark"><svg viewBox="0 0 100 100" width="20" height="20" aria-hidden="true"><defs><linearGradient id="wfm" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#16324e"/><stop offset="1" stop-color="#1e8449"/></linearGradient></defs><path d="M 12 38 C 17 72, 29 74, 36 52 C 41 40, 47 40, 52 52 C 59 74, 71 72, 78 46 L 90 24" fill="none" stroke="url(#wfm)" stroke-width="12" stroke-linecap="round"/></svg></span><span class="wordmark">werk<span class="flow-txt">flow</span></span></div>
   <div id="app"><div class="center">⏳ Angebot wird geladen …</div></div>
   <div class="foot">Preise zzgl. USt · monatlich kündbar · Daten in Deutschland ·
     <a href="/impressum" target="_blank">Impressum</a> · <a href="/datenschutz" target="_blank">Datenschutz</a></div>
@@ -94,7 +95,7 @@
       '<div class="sub">Dein persönliches Angebot für <b>' + esc(data.company) + '</b> — gültig bis ' + dt(data.validUntil) + '.</div>' +
       (data.message ? '<div class="msg">' + esc(data.message) + '</div>' : '') +
       '<div class="plan">' +
-      '<div class="name">WERKOS ' + esc(data.planLabel) + '</div>' +
+      '<div class="name">werkflow ' + esc(data.planLabel) + '</div>' +
       '<div class="price"><b>' + Number(data.priceEur).toLocaleString('de-DE') + ' €</b><span> / Monat pauschal</span>' +
       (rabatt ? '<span class="strike">' + Number(data.listPriceEur).toLocaleString('de-DE') + ' €</span>' : '') + '</div>' +
       '<ul>' + (data.modules || []).map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') +
@@ -129,7 +130,7 @@
           if (r.s === 201) {
             try { localStorage.setItem('werkos_session_v1', JSON.stringify(r.j)); } catch (e) {}
             app.innerHTML = '<div class="card"><div class="done"><div class="big">🎉</div>' +
-              '<h2>Willkommen bei WERKOS!</h2>' +
+              '<h2>Willkommen bei werkflow!</h2>' +
               '<p>Dein Abo ist aktiv, alle Module sind freigeschaltet.<br>Die erste Rechnung kommt per E-Mail.</p>' +
               '<a href="/app" style="display:block;margin-top:16px;"><button class="btn">→ Jetzt loslegen (du bist angemeldet)</button></a>' +
               '</div></div>';
