@@ -1,0 +1,43 @@
+# Auto-Deploy auf den eigenen Server (IONOS VPS, Hetzner, …):
+# Bei jedem Merge auf main verbindet sich der Workflow per SSH und zieht
+# den neuesten Stand (deploy/update.sh).
+#
+# Aktivierung: In den Repo-Einstellungen → Secrets and variables → Actions
+# drei Secrets anlegen:
+#   DEPLOY_HOST     = IP oder Hostname des Servers (z. B. 82.165.xx.xx)
+#   DEPLOY_USER     = SSH-Benutzer (meist root)
+#   DEPLOY_SSH_KEY  = privater SSH-Schlüssel (Inhalt von ~/.ssh/id_ed25519)
+# Ohne diese Secrets wird der Deploy einfach übersprungen (kein Fehler).
+name: Server-Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: server-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Per SSH aktualisieren
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "ℹ DEPLOY_HOST/DEPLOY_SSH_KEY nicht konfiguriert — Server-Deploy übersprungen."
+            echo "  Zum Aktivieren: Secrets DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY anlegen."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh -i ~/.ssh/id_deploy \
+              -o StrictHostKeyChecking=accept-new \
+              -o ConnectTimeout=15 \
+              "${USER:-root}@$HOST" 'bash /opt/werkos/deploy/update.sh'
