@@ -7,7 +7,10 @@
 <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-<title>Projektplanung und Kalkulation — V6.3 (modular)</title>
+<title>WERKOS — Dein Betrieb in einer App</title>
+<!-- WERKOS SaaS: Login/Registrierung, Mandanten-Session, Konto-Widget.
+     Muss VOR dem App-Code geladen werden. -->
+<script src="saas.js"></script>
 <meta name="theme-color" content="#1a3a5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -8875,7 +8878,7 @@
            +  '<button class="sidenav-item" onclick="openMyProfile()"><span class="icon">👤</span><span class="label">Mein Profil</span></button>'
            +  '</div>';
       // Logout-Button
-      html += '<div class="sidenav-section"><button class="sidenav-item" onclick="setMode(\'locked\')"><span class="icon">🚪</span><span class="label">Abmelden</span></button></div>';
+      html += '<div class="sidenav-section"><button class="sidenav-item" onclick="(window.WERKOS && WERKOS.session()) ? WERKOS.logout() : setMode(\'locked\')"><span class="icon">🚪</span><span class="label">Abmelden</span></button></div>';
       if (sidenav) sidenav.innerHTML = html;
       const sf = document.getElementById('sidenavStats'); if (sf) sf.innerHTML = '';
       renderBreadcrumbs();
@@ -46244,8 +46247,23 @@
     });
     html += '</tbody></table></div>';
 
+    // WERKOS: Kunden-Antwort auf geteilten Link anzeigen
+    if (ang.acceptedByCustomer) {
+      html += '<div style="background:var(--color-success-soft, #dff5e7); border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:13px;">'
+        + '✍ <b>Vom Kunden digital angenommen</b> — ' + escapeHtml(ang.acceptedByCustomer.name || '') + ' am ' + (ang.acceptedByCustomer.at ? new Date(ang.acceptedByCustomer.at).toLocaleString('de-DE') : '')
+        + (ang.acceptedByCustomer.comment ? '<br>Anmerkung: „' + escapeHtml(ang.acceptedByCustomer.comment) + '"' : '') + '</div>';
+    } else if (ang.declinedByCustomer) {
+      html += '<div style="background:var(--color-danger-soft, #fdecea); border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:13px;">'
+        + '❌ <b>Vom Kunden abgelehnt</b> — ' + escapeHtml(ang.declinedByCustomer.name || '')
+        + (ang.declinedByCustomer.comment ? '<br>Grund: „' + escapeHtml(ang.declinedByCustomer.comment) + '"' : '') + '</div>';
+    }
+
     // Aktionen
     html += '<div class="modal-buttons" style="justify-content:flex-start; flex-wrap:wrap;">';
+    // WERKOS: Angebot als Link teilen (Kunde nimmt per Unterschrift an) — nur im SaaS-Betrieb
+    if (window.WERKOS && WERKOS.session() && (status === 'draft' || status === 'sent') && !ang.convertedToProjectId) {
+      html += '<button style="background:#25D366; color:#fff; border:none; padding:8px 14px; border-radius:5px; cursor:pointer; font-weight:600;" onclick="WERKOS.shareAngebot(\''+ang.id+'\')">📲 Kunden-Link (WhatsApp)</button>';
+    }
     if (status === 'draft') html += '<button class="success" onclick="setAngebotStatus(\''+ang.id+'\',\'sent\')">📤 Als versendet markieren</button>';
     if ((status === 'sent' || status === 'expired') && !ang.convertedToProjectId) {
       html += '<button class="success" onclick="setAngebotStatus(\''+ang.id+'\',\'accepted\')">✅ Angenommen</button>';
@@ -52250,6 +52268,9 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     // V5.2: Demo-Daten beim allerersten Start laden
     try { await loadDemoIfEmpty(); } catch(e) { console.warn('Demo-Init:', e); }
     await loadState();
+    // WERKOS SaaS: Server-Konfiguration kommt aus der Login-Session (saas.js) und
+    // überschreibt manuelle Einstellungen, solange eine SaaS-Sitzung aktiv ist.
+    try { if (window.WERKOS && typeof WERKOS.applyServerConfig === 'function') WERKOS.applyServerConfig(); } catch(e) {}
     // V10.3: Signal an Auto-Save-Layer, dass State geladen ist
     window.__appLoadedAt = Date.now();
     document.dispatchEvent(new CustomEvent('app-state-loaded'));

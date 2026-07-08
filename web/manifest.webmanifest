@@ -1,0 +1,13 @@
+{
+  "name": "WERKOS — Dein Betrieb in einer App",
+  "short_name": "WERKOS",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#1a3a5c",
+  "description": "Modulares Betriebssystem für Kleinstbetriebe: Zeiten, Aufträge, Geld, Planung, Compliance.",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
