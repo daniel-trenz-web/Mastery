@@ -8641,7 +8641,9 @@
     { key: 'einkauf',     icon: '🛒', label: 'Einkauf & Lager',            desc: 'Lieferanten, Materiallisten, Eingangsrechnungen, Bestellungen, Lagerhaltung, Inventur, Verbrauchsanalyse', tabs: ['einkauf', 'lager', 'invoices'] },
     { key: 'cockpit',     icon: '🎯', label: 'Controlling-Cockpit',        desc: 'Plan/Ist-Vergleich pro Projekt mit Auswertungen', tabs: ['cockpit'] },
     { key: 'rechnungen',  icon: '🧾', label: 'Rechnungen / Abrechnungstool', desc: 'Rechnungen, Gutschriften, Sammelrechnungen, Mahnwesen', tabs: ['rechnungen'] },
-    { key: 'wochen',      icon: '📊', label: 'Auswertungen',                desc: 'Wochen- und Monats-Übersichten, KPIs', tabs: ['wochen'] }
+    { key: 'wochen',      icon: '📊', label: 'Auswertungen',                desc: 'Wochen- und Monats-Übersichten, KPIs', tabs: ['wochen'] },
+    { key: 'buchhaltung', icon: '🔗', label: 'Buchhaltung & Schnittstellen', desc: 'DATEV, Lexoffice, Bankanbindung mit Zahlungsabgleich, Eingangsrechnungs-Inbox, Händler-Bestellung, E-Mail-Versand', tabs: ['buchhaltung'] },
+    { key: 'website',     icon: '🌐', label: 'Website-Baukasten',           desc: 'KI-generierte, SEO- & DSGVO-konforme Firmen-Website in 3 Vorlagen', tabs: ['website'] }
   ];
   // Hilfsfunktion: prüft, ob ein Modul aktiv ist (Default: an, falls Setting fehlt)
   function isModuleEnabled(key) {
@@ -8686,6 +8688,10 @@
     { label: 'Einkauf', items: [
       { tab: 'lv',       icon: '📋', label: 'Leistungsverzeichnisse' },
       { tab: 'einkauf',  icon: '🛒', label: 'Einkauf & Lager' },
+    ]},
+    { label: 'Büro & Schnittstellen', items: [
+      { tab: 'buchhaltung', icon: '🔗', label: 'Buchhaltung & Schnittstellen' },
+      { tab: 'website',     icon: '🌐', label: 'Website-Baukasten' },
     ]},
     { label: 'Controlling', items: [
       { tab: 'cockpit',    icon: '🎯', label: 'Cockpit' },
@@ -9071,6 +9077,8 @@
       else if (currentTab === 'cockpit') renderControllingCockpit();
       else if (currentTab === 'angebote') renderAngeboteTab();
       else if (currentTab === 'aufmass') renderAufmassTab();
+      else if (currentTab === 'buchhaltung') renderBuchhaltungTab();
+      else if (currentTab === 'website') renderWebsiteTab();
       else if (currentTab === 'maengel') renderMaengelOverview();
       else if (currentTab === 'tickets') renderTicketsTab();
       else if (currentTab === 'subcontractors') renderSubcontractorsTab();
@@ -9161,6 +9169,8 @@
       if (currentTab === 'cockpit') return renderControllingCockpit();
       if (currentTab === 'angebote') return renderAngeboteTab();
       if (currentTab === 'aufmass') return renderAufmassTab();
+      if (currentTab === 'buchhaltung') return renderBuchhaltungTab();
+      if (currentTab === 'website') return renderWebsiteTab();
       if (currentTab === 'maengel') return renderMaengelOverview();
       if (currentTab === 'subcontractors') return renderSubcontractorsTab();
       if (currentTab === 'invoices') { currentTab = 'einkauf'; return renderEinkaufLagerTab(); }
@@ -55860,6 +55870,440 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       alert('AR-Messen konnte nicht gestartet werden. Bitte Maße per Eingabe erfassen.');
     });
   };
+})();
+</script>
+
+<!-- ============================================================
+     BUCHHALTUNG & SCHNITTSTELLEN + WEBSITE-BAUKASTEN (Client)
+     Bedient die Server-Endpunkte /api/t/* (DATEV, Lexoffice, Bank,
+     E-Rechnung, Händler-Katalog, E-Mail, Website-Generator).
+     Ohne Server (Demo/GitHub Pages) sauberer Hinweis statt Fehler.
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+  function S() { return window.state || {}; }
+  function esc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s); }
+  function eur(n) { return (typeof fmtEUR === 'function') ? fmtEUR(n) : ((Math.round((+n || 0) * 100) / 100).toFixed(2) + ' €'); }
+  function num(n, d) { return (typeof fmtNum === 'function') ? fmtNum(n, d == null ? 2 : d) : String(n); }
+  function toast(m) { if (typeof mToast === 'function') mToast(m); else alert(m); }
+  function guest() { return (typeof isGuest === 'function' && isGuest()); }
+
+  function srv() { return S().serverConfig || {}; }
+  function online() { return !!srv().apiUrl; }
+  function hdrs(extra) {
+    var c = srv(), h = Object.assign({}, extra || {});
+    if (c.tenantKey) h['X-Tenant-Key'] = c.tenantKey;
+    if (c.auth === 'apikey' && c.apiKey) h['Authorization'] = 'Bearer ' + c.apiKey;
+    return h;
+  }
+  function opts() { return srv().auth === 'windows' ? { credentials: 'include' } : {}; }
+
+  // Authentifizierter JSON-Aufruf gegen /api/t + <path>
+  function apiJson(path, method, body) {
+    if (!online()) return Promise.resolve({ offline: true, status: 0 });
+    var o = Object.assign({ method: method || 'GET', headers: hdrs({ 'Content-Type': 'application/json' }) }, opts());
+    if (body !== undefined) o.body = JSON.stringify(body);
+    return fetch(srv().apiUrl + path, o).then(parseRes);
+  }
+  function apiRaw(path, buf, ctype) {
+    if (!online()) return Promise.resolve({ offline: true, status: 0 });
+    var o = Object.assign({ method: 'POST', headers: hdrs({ 'Content-Type': ctype || 'application/octet-stream' }), body: buf }, opts());
+    return fetch(srv().apiUrl + path, o).then(parseRes);
+  }
+  function apiBlob(path, body) {
+    var o = Object.assign({ method: 'POST', headers: hdrs({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) }, opts());
+    return fetch(srv().apiUrl + path, o);
+  }
+  function parseRes(r) { return r.text().then(function (t) { var d; try { d = JSON.parse(t); } catch (e) { d = t; } return { status: r.status, data: d }; }); }
+  function offlineMsg() { toast('Diese Funktion braucht den werkflow-Server (nicht in der GitHub-Demo verfügbar).'); }
+
+  function readFile(file) {
+    return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(new Uint8Array(fr.result)); }; fr.onerror = rej; fr.readAsArrayBuffer(file); });
+  }
+  function download(filename, text, mime) {
+    var blob = (text instanceof Blob) ? text : new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  }
+  function card(title, inner) {
+    return '<div class="card" style="padding:16px;margin-bottom:14px;"><h3 style="margin:0 0 10px;font-size:16px;">' + title + '</h3>' + inner + '</div>';
+  }
+
+  // ======================= BUCHHALTUNG & SCHNITTSTELLEN =======================
+  var _inbox = [];
+  window.renderBuchhaltungTab = function () {
+    var main = document.getElementById('mainContent'); if (!main) return;
+    var html = '<h2 style="margin-bottom:6px;">🔗 Buchhaltung &amp; Schnittstellen</h2>' +
+      '<div class="help">Verbinde werkflow mit DATEV, Lexoffice, deiner Bank und den Großhandels-Portalen. Rechnungen &amp; Angebote per E-Mail versenden, Eingangsrechnungen automatisch einlesen, Zahlungen abgleichen.</div>';
+    if (!online()) html += '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:13px;color:#8a6d1a;margin:10px 0;">ℹ️ <b>Server nötig:</b> Die Schnittstellen laufen auf dem werkflow-Server (IONOS/VPS). In der öffentlichen GitHub-Demo sind sie deaktiviert.</div>';
+
+    html += '<div id="bhInboxBox"></div>';
+
+    // DATEV
+    html += card('📗 DATEV — Export für den Steuerberater',
+      '<div class="row2"><div><label>Berater-Nr.</label><input id="dvBerater" placeholder="z. B. 12345"></div>' +
+      '<div><label>Mandanten-Nr.</label><input id="dvMandant" placeholder="z. B. 67890"></div></div>' +
+      '<div class="row2"><div><label>Kontenrahmen</label><select id="dvSkr"><option value="03">SKR03</option><option value="04">SKR04</option></select></div>' +
+      '<div><label>Zeitraum ab</label><input type="date" id="dvFrom"></div></div>' +
+      '<p style="margin-top:10px;"><button class="secondary" onclick="bhSaveDatev()">Einstellungen speichern</button> ' +
+      '<button class="success" onclick="bhDatevExport()">⬇ EXTF-Buchungsstapel exportieren</button></p>' +
+      '<p style="font-size:12px;color:#789;">Erzeugt eine DATEV-importierbare CSV aus deinen Aus- und Eingangsrechnungen. Sachkonten mit dem Steuerberater abstimmen.</p>');
+
+    // Lexoffice
+    html += card('📘 Lexoffice / Lexware Office',
+      '<label>API-Key</label><input id="lxKey" placeholder="Lexoffice API-Key" type="password">' +
+      '<p style="margin-top:10px;"><button class="secondary" onclick="bhSaveLex()">Speichern</button> ' +
+      '<button class="secondary" onclick="bhTestLex()">Verbindung testen</button></p>' +
+      '<p style="font-size:12px;color:#789;">Überträgt Rechnungen als Belege nach Lexoffice. Den API-Key findest du in Lexoffice unter Einstellungen → öffentliche API.</p>');
+
+    // Bank
+    html += card('🏦 Bank &amp; Zahlungen',
+      '<p style="font-size:13px;">Kontoauszug importieren (CAMT.053 / MT940 / CSV) — werkflow gleicht Zahlungen automatisch mit offenen Rechnungen ab.</p>' +
+      '<input type="file" id="bkFile" accept=".xml,.txt,.sta,.csv,.mt940">' +
+      '<p style="margin-top:8px;"><button class="success" onclick="bhBankImport()">Auszug einlesen &amp; abgleichen</button></p>' +
+      '<div id="bkResult"></div>');
+
+    // Eingangsrechnungen
+    html += card('📥 Eingangsrechnungen (ZUGFeRD / XRechnung / PDF)',
+      '<p style="font-size:13px;">E-Rechnung hochladen — ZUGFeRD/XRechnung werden strukturiert gelesen, PDFs per KI.</p>' +
+      '<input type="file" id="erFile" accept=".xml,.pdf">' +
+      '<p style="margin-top:8px;"><button class="success" onclick="bhInvoiceParse()">Rechnung einlesen</button></p>' +
+      '<div id="erResult"></div>' +
+      '<p style="font-size:12px;color:#789;margin-top:10px;">Für den automatischen Posteingang bekommst du eine eigene E-Mail-Adresse (rechnung.…@) — Rechnungen landen dann direkt hier. Weiterleitung an den Steuerberater inklusive.</p>' +
+      '<label>Weiterleitung an Steuerberater (E-Mail)</label><input id="stbMail" placeholder="kanzlei@steuerberater.de">' +
+      '<p style="margin-top:8px;"><button class="secondary" onclick="bhSaveInbox()">Posteingang aktivieren</button></p><div id="inboxAddr"></div>');
+
+    // Händler
+    html += card('🛒 Händler-Bestellung (IDS / UGL / DATANORM)',
+      '<p style="font-size:13px;">Artikelkatalog importieren (DATANORM/CSV) in den Materialstamm.</p>' +
+      '<input type="file" id="catFile" accept=".txt,.001,.csv,.dat">' +
+      '<p style="margin-top:8px;"><button class="success" onclick="bhCatalogImport()">Katalog importieren</button></p>' +
+      '<div id="catResult"></div>' +
+      '<p style="font-size:12px;color:#789;margin-top:10px;">IDS-Connect-Punchout &amp; UGL-Bestellung sind serverseitig vorbereitet; Zugangsdaten des Großhändlers (Kundennummer, Shop-URL) hinterlegen wir pro Lieferant.</p>');
+
+    // E-Mail
+    html += card('✉️ E-Mail-Versand',
+      '<p style="font-size:13px;">Angebote und Rechnungen werden direkt aus werkflow per E-Mail (Server-Postfach/SMTP) versendet — inklusive PDF-Anhang und Antwortadresse deines Betriebs.</p>' +
+      '<label>Absender-Adresse (optional, Standard = Server-Postfach)</label><input id="mailFrom" placeholder="info@deinbetrieb.de">' +
+      '<p style="margin-top:8px;"><button class="secondary" onclick="bhSaveMail()">Speichern</button></p>');
+
+    main.innerHTML = html;
+    bhLoadState();
+  };
+
+  function bhLoadState() {
+    if (!online()) return;
+    apiJson('/integrations', 'GET').then(function (r) {
+      if (r.status !== 200 || !r.data) return;
+      (r.data.integrations || []).forEach(function (c) {
+        if (c.kind === 'datev' && c.config) { setVal('dvBerater', c.config.beraterNr); setVal('dvMandant', c.config.mandantNr); if (c.config.skr) setVal('dvSkr', c.config.skr); }
+        if (c.kind === 'invoice_inbox' && c.config) setVal('stbMail', c.config.forwardTo);
+        if (c.kind === 'mail' && c.config) setVal('mailFrom', c.config.from);
+      });
+      bhRenderInbox(r.data.inboxCount || 0);
+    });
+    apiJson('/inbox', 'GET').then(function (r) { if (r.status === 200) { _inbox = (r.data && r.data.items) || []; bhRenderInbox(_inbox.length); } });
+  }
+  function setVal(id, v) { var el = document.getElementById(id); if (el && v != null) el.value = v; }
+
+  function bhRenderInbox(count) {
+    var box = document.getElementById('bhInboxBox'); if (!box) return;
+    if (!_inbox.length) { box.innerHTML = count ? '<div style="padding:10px;background:#eaf4ff;border-radius:8px;margin:10px 0;">📬 ' + count + ' neue(r) Posten im Eingang. <button class="secondary small" onclick="renderBuchhaltungTab()">Aktualisieren</button></div>' : ''; return; }
+    var rows = _inbox.map(function (it) {
+      var label = it.kind === 'invoice' ? '📄 Eingangsrechnung' : it.kind === 'order' ? '🛒 Bestellung (Portal)' : '🏦 Bank-Transaktionen';
+      var info = '';
+      if (it.kind === 'invoice' && it.payload && it.payload.data) info = esc((it.payload.data.supplier || '') + ' · ' + eur(it.payload.data.gross || 0));
+      if (it.kind === 'order' && it.payload) info = (it.payload.count || 0) + ' Positionen';
+      if (it.kind === 'bank-tx' && it.payload) info = ((it.payload.transactions || []).length) + ' Buchungen';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #eef;">' +
+        '<span><b>' + label + '</b> <span style="color:#789;">' + info + '</span></span>' +
+        '<span><button class="success small" onclick="bhInboxImport(\'' + it.id + '\',\'' + it.kind + '\')">Übernehmen</button> ' +
+        '<button class="secondary small" onclick="bhInboxDismiss(\'' + it.id + '\')">Verwerfen</button></span></div>';
+    }).join('');
+    box.innerHTML = '<div class="card" style="padding:12px;margin:10px 0;border-left:4px solid #1a5cff;"><h3 style="margin:0 0 8px;font-size:15px;">📬 Posteingang (' + _inbox.length + ')</h3>' + rows + '</div>';
+  }
+
+  window.bhInboxImport = function (id, kind) {
+    var it = _inbox.find(function (x) { return x.id === id; });
+    apiJson('/inbox/' + id + '/import', 'POST').then(function () {
+      if (it && kind === 'invoice' && it.payload && it.payload.data) importIncomingInvoice(it.payload.data);
+      if (it && kind === 'order' && it.payload) importOrder(it.payload);
+      _inbox = _inbox.filter(function (x) { return x.id !== id; });
+      bhRenderInbox(_inbox.length); toast('✓ Übernommen.');
+    });
+  };
+  window.bhInboxDismiss = function (id) {
+    apiJson('/inbox/' + id + '/dismiss', 'POST').then(function () { _inbox = _inbox.filter(function (x) { return x.id !== id; }); bhRenderInbox(_inbox.length); });
+  };
+
+  // ---- DATEV ----
+  window.bhSaveDatev = function () {
+    if (!online()) return offlineMsg();
+    apiJson('/integrations/datev', 'PUT', { config: { beraterNr: val('dvBerater'), mandantNr: val('dvMandant'), skr: val('dvSkr') } }).then(function () { toast('✓ DATEV-Einstellungen gespeichert.'); });
+  };
+  window.bhDatevExport = function () {
+    if (!online()) return offlineMsg();
+    var items = collectInvoiceItems();
+    if (!items.length) { alert('Keine finalisierten Rechnungen zum Export gefunden.'); return; }
+    apiBlob('/datev/export', { items: items, cfg: { skr: val('dvSkr') }, meta: { beraterNr: val('dvBerater'), mandantNr: val('dvMandant'), bezeichnung: 'werkflow Export' } })
+      .then(function (r) { return r.blob(); })
+      .then(function (b) { download('EXTF_Buchungsstapel.csv', b); toast('✓ DATEV-Buchungsstapel (' + items.length + ' Belege) heruntergeladen.'); });
+  };
+  function collectInvoiceItems() {
+    var out = [];
+    (S().invoices || []).forEach(function (inv) {
+      if (inv.type === 'gutschrift') return;
+      out.push({ kind: 'outgoing', number: inv.number, date: (inv.date || '').slice(0, 10), gross: inv.gross, party: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '', dueDate: inv.dueDate });
+    });
+    (S().incomingInvoices || []).forEach(function (inv) {
+      out.push({ kind: 'incoming', number: inv.invoiceNumber, date: (inv.invoiceDate || '').slice(0, 10), gross: inv.totalGross, party: inv.supplierName || '' });
+    });
+    return out;
+  }
+
+  // ---- Lexoffice ----
+  window.bhSaveLex = function () {
+    if (!online()) return offlineMsg();
+    apiJson('/integrations/lexoffice', 'PUT', { config: { apiKey: val('lxKey') } }).then(function () { toast('✓ Lexoffice-Key gespeichert.'); setVal('lxKey', ''); });
+  };
+  window.bhTestLex = function () {
+    if (!online()) return offlineMsg();
+    apiJson('/lexoffice/test', 'POST').then(function (r) {
+      if (r.data && r.data.ok) toast('✓ Lexoffice verbunden: ' + ((r.data.data && r.data.data.companyName) || 'OK'));
+      else toast('✗ Lexoffice-Test fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
+    });
+  };
+
+  // ---- Bank ----
+  var _bankTx = [];
+  window.bhBankImport = function () {
+    if (!online()) return offlineMsg();
+    var f = document.getElementById('bkFile'); if (!f || !f.files[0]) { alert('Bitte Kontoauszug wählen.'); return; }
+    var ct = /\.xml$/i.test(f.files[0].name) ? 'application/xml' : /\.csv$/i.test(f.files[0].name) ? 'text/csv' : 'text/plain';
+    readFile(f.files[0]).then(function (buf) { return apiRaw('/bank/import', buf, ct); }).then(function (r) {
+      if (r.status !== 200) { toast('Import fehlgeschlagen.'); return; }
+      _bankTx = r.data.transactions || [];
+      var items = collectOpenItems();
+      apiJson('/bank/reconcile', 'POST', { transactions: _bankTx, openItems: items }).then(function (rr) {
+        renderBankResult(r.data.format, _bankTx, (rr.data && rr.data.matches) || []);
+      });
+    });
+  };
+  function collectOpenItems() {
+    var items = [];
+    (S().invoices || []).forEach(function (inv) { if (inv.type !== 'gutschrift' && !inv.paidAt) items.push({ id: 'out_' + inv.id, kind: 'outgoing', number: inv.number, amount: inv.gross, party: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '' }); });
+    (S().incomingInvoices || []).forEach(function (inv) { if (!inv.paidAt) items.push({ id: 'in_' + inv.id, kind: 'incoming', number: inv.invoiceNumber, amount: inv.totalGross, party: inv.supplierName || '' }); });
+    return items;
+  }
+  function renderBankResult(format, txs, matches) {
+    var box = document.getElementById('bkResult'); if (!box) return;
+    var mByTx = {}; matches.forEach(function (m) { mByTx[m.txIndex] = m; });
+    var rows = txs.map(function (t, i) {
+      var m = mByTx[i];
+      var badge = m ? (m.auto ? '<span style="color:#1e8449;">✓ ' + esc(m.number) + '</span>' : '<span style="color:#b9770e;">? ' + esc(m.number) + '</span>') : '<span style="color:#999;">—</span>';
+      return '<tr><td>' + esc(t.date) + '</td><td>' + esc(t.counterparty || '') + '</td><td style="text-align:right;color:' + (t.amount < 0 ? '#c0392b' : '#1e8449') + ';">' + eur(t.amount) + '</td><td>' + badge + '</td></tr>';
+    }).join('');
+    var auto = matches.filter(function (m) { return m.auto; }).length;
+    box.innerHTML = '<div style="margin-top:12px;"><b>' + txs.length + ' Buchungen (' + format + ') · ' + auto + ' automatisch zugeordnet</b>' +
+      '<div style="overflow-x:auto;"><table style="width:100%;font-size:13px;margin-top:6px;"><tr style="text-align:left;color:#789;"><th>Datum</th><th>Gegenpartei</th><th style="text-align:right;">Betrag</th><th>Rechnung</th></tr>' + rows + '</table></div>' +
+      (auto ? '<p style="margin-top:8px;"><button class="success" onclick="bhBankApply()">' + auto + ' Zahlungen als bezahlt buchen</button></p>' : '') + '</div>';
+    window._bankMatches = matches;
+  }
+  window.bhBankApply = function () {
+    var matches = window._bankMatches || [];
+    var n = 0;
+    matches.filter(function (m) { return m.auto; }).forEach(function (m) {
+      var rawId = String(m.itemId).replace(/^(out_|in_)/, '');
+      var inv = (S().invoices || []).find(function (x) { return x.id === rawId; }) || (S().incomingInvoices || []).find(function (x) { return x.id === rawId; });
+      if (inv && !inv.paidAt) { inv.paidAt = Date.now(); if (S().invoices.indexOf(inv) >= 0) inv.status = 'paid'; n++; }
+    });
+    if (typeof saveState === 'function') saveState();
+    toast('✓ ' + n + ' Rechnungen als bezahlt markiert.');
+    renderBuchhaltungTab();
+  };
+
+  // ---- Eingangsrechnung E-Invoice ----
+  window.bhInvoiceParse = function () {
+    if (!online()) return offlineMsg();
+    var f = document.getElementById('erFile'); if (!f || !f.files[0]) { alert('Bitte Rechnung wählen.'); return; }
+    var file = f.files[0];
+    var ct = /\.pdf$/i.test(file.name) ? 'application/pdf' : 'application/xml';
+    readFile(file).then(function (buf) { return apiRaw('/invoices/parse', buf, ct); }).then(function (r) {
+      var box = document.getElementById('erResult');
+      if (!r.data || !r.data.ok) { box.innerHTML = '<p style="color:#c0392b;margin-top:8px;">Konnte nicht gelesen werden (' + esc((r.data && r.data.error) || 'Fehler') + '). Als PDF-Beleg manuell erfassen.</p>'; return; }
+      var d = r.data.data;
+      window._parsedInvoice = d;
+      box.innerHTML = '<div style="margin-top:10px;padding:10px;background:#f4f7fb;border-radius:8px;">' +
+        '<b>' + esc(d.supplier && d.supplier.name || d.supplier || '') + '</b> · Nr. ' + esc(d.invoiceNumber || '?') + '<br>' +
+        'Datum ' + esc(d.invoiceDate || d.issueDate || '?') + ' · Brutto <b>' + eur(d.gross || 0) + '</b> (' + esc(r.data.via) + ')<br>' +
+        (d.positions ? d.positions.length + ' Positionen' : '') +
+        '<p style="margin-top:8px;"><button class="success" onclick="bhImportParsed()">Als Eingangsrechnung übernehmen</button></p></div>';
+    });
+  };
+  window.bhImportParsed = function () { if (window._parsedInvoice) { importIncomingInvoice(window._parsedInvoice); toast('✓ Eingangsrechnung übernommen.'); } };
+  function importIncomingInvoice(d) {
+    if (!Array.isArray(S().incomingInvoices)) S().incomingInvoices = [];
+    S().incomingInvoices.push({
+      id: (typeof uid === 'function' ? uid('iinv') : 'iinv_' + Date.now()),
+      supplierName: (d.supplier && d.supplier.name) || d.supplier || '', invoiceNumber: d.invoiceNumber || '',
+      invoiceDate: d.invoiceDate || d.issueDate || '', totalGross: d.gross || 0,
+      positions: (d.positions || []).map(function (p, i) { return { id: 'iip_' + i, description: p.name, nr: i + 1, qty: p.qty || 0, unit: p.unit || '', ep: p.unitPrice || 0, target: 'project' }; }),
+      uploadedAt: Date.now(), via: 'einvoice'
+    });
+    if (typeof saveState === 'function') saveState();
+  }
+  function importOrder(payload) {
+    if (!Array.isArray(S().purchaseOrders)) S().purchaseOrders = [];
+    S().purchaseOrders.push({
+      id: (typeof uid === 'function' ? uid('po') : 'po_' + Date.now()),
+      number: 'IDS-' + Date.now(), supplierName: 'Großhandel (Portal)', date: new Date().toISOString().slice(0, 10),
+      items: (payload.positions || []).map(function (p, i) { return { nr: i + 1, name: p.name || p.artNr, qty: p.qty, unit: p.unit, price: p.price }; }),
+      status: 'draft', createdAt: Date.now()
+    });
+    if (typeof saveState === 'function') saveState();
+  }
+
+  window.bhSaveInbox = function () {
+    if (!online()) return offlineMsg();
+    apiJson('/integrations/invoice_inbox', 'PUT', { regenerateInboxToken: true, config: { forwardTo: val('stbMail') } }).then(function (r) {
+      var box = document.getElementById('inboxAddr');
+      if (r.data && r.data.inboxAddress) box.innerHTML = '<div style="margin-top:8px;padding:8px;background:#eaf4ff;border-radius:6px;font-size:13px;">📬 Deine Rechnungs-Adresse: <b>' + esc(r.data.inboxAddress) + '</b><br>Leite Lieferantenrechnungen hierher – sie landen automatisch im Posteingang.</div>';
+      else box.innerHTML = '<p style="color:#1e8449;margin-top:6px;">✓ Gespeichert.</p>';
+    });
+  };
+  window.bhSaveMail = function () { if (!online()) return offlineMsg(); apiJson('/integrations/mail', 'PUT', { config: { from: val('mailFrom') } }).then(function () { toast('✓ Absender gespeichert.'); }); };
+
+  // ---- Katalog ----
+  window.bhCatalogImport = function () {
+    if (!online()) return offlineMsg();
+    var f = document.getElementById('catFile'); if (!f || !f.files[0]) { alert('Bitte Katalogdatei wählen.'); return; }
+    var ct = /\.csv$/i.test(f.files[0].name) ? 'text/csv' : 'text/plain';
+    readFile(f.files[0]).then(function (buf) { return apiRaw('/purchasing/catalog', buf, ct); }).then(function (r) {
+      var box = document.getElementById('catResult');
+      if (r.status !== 200) { toast('Import fehlgeschlagen.'); return; }
+      window._catalog = r.data.articles || [];
+      box.innerHTML = '<p style="margin-top:8px;"><b>' + r.data.count + ' Artikel (' + r.data.format + ') erkannt.</b> ' +
+        '<button class="success small" onclick="bhCatalogApply()">In Materialstamm übernehmen</button></p>';
+    });
+  };
+  window.bhCatalogApply = function () {
+    var arts = window._catalog || [];
+    if (!Array.isArray(S().materialLists)) S().materialLists = [];
+    var list = { id: (typeof uid === 'function' ? uid('ml') : 'ml_' + Date.now()), name: 'Import ' + new Date().toLocaleDateString('de-DE'), positions: arts.map(function (a, i) { return { id: 'mp_' + i, nr: i + 1, name: a.name, unit: a.unit, price: a.priceEur, artNr: a.artNr }; }) };
+    S().materialLists.push(list);
+    if (typeof saveState === 'function') saveState();
+    toast('✓ ' + arts.length + ' Artikel als Materialliste importiert.');
+  };
+
+  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+  // ============================= WEBSITE-BAUKASTEN ============================
+  window.renderWebsiteTab = function () {
+    var main = document.getElementById('mainContent'); if (!main) return;
+    var html = '<h2 style="margin-bottom:6px;">🌐 Website-Baukasten</h2>' +
+      '<div class="help">Beantworte ein paar Fragen zu deinem Betrieb – die KI erstellt daraus eine fertige, SEO-optimierte und DSGVO-konforme Website mit Cookie-Consent, Impressum und Datenschutz. Anschließend mit eigener Domain veröffentlichen.</div>';
+    if (!online()) html += '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:13px;color:#8a6d1a;margin:10px 0;">ℹ️ Der Website-Baukasten braucht den werkflow-Server.</div>';
+    if (!guest()) html += '<button class="success" onclick="wsNew()">+ Neue Website erstellen</button>';
+    html += '<div id="wsList" style="margin-top:14px;"></div>';
+    main.innerHTML = html;
+    if (online()) apiJson('/sites', 'GET').then(function (r) { wsRenderList((r.data && r.data.sites) || [], r.data && r.data.baseUrl); });
+  };
+  function wsRenderList(sites, baseUrl) {
+    var box = document.getElementById('wsList'); if (!box) return;
+    if (!sites.length) { box.innerHTML = '<div style="padding:24px;text-align:center;color:#889;">Noch keine Website erstellt.</div>'; return; }
+    box.innerHTML = sites.map(function (s) {
+      var pub = s.status === 'published';
+      return '<div class="card" style="padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+        '<div><b>' + esc(s.slug) + '</b> <span style="color:#789;">· Vorlage ' + esc(s.template) + '</span><br>' +
+        '<span style="font-size:12px;color:' + (pub ? '#1e8449' : '#b9770e') + ';">' + (pub ? '● veröffentlicht' : '○ Entwurf') + (s.domain ? ' · ' + esc(s.domain) : '') + '</span></div>' +
+        '<div><button class="secondary small" onclick="wsPreview(\'' + s.id + '\')">Vorschau</button> ' +
+        (pub ? '<a class="secondary small" style="text-decoration:none;padding:6px 10px;" href="' + esc((baseUrl || '') + s.slug + '/index.html') + '" target="_blank">Öffnen ↗</a> <button class="secondary small" onclick="wsUnpublish(\'' + s.id + '\')">Offline</button>' : '<button class="success small" onclick="wsPublish(\'' + s.id + '\')">Veröffentlichen</button>') +
+        '</div></div>';
+    }).join('');
+  }
+
+  var _wsStep = 0, _wsData = {};
+  window.wsNew = function () {
+    if (!online()) return offlineMsg();
+    _wsStep = 0; _wsData = { template: 'modern', services: [] };
+    wsShowStep();
+  };
+  function wsShowStep() {
+    var steps = [wsStep1, wsStep2, wsStep3, wsStep4];
+    steps[_wsStep]();
+  }
+  function wsStep1() {
+    showModal('<h2>Website · Schritt 1/4 — Unternehmen</h2>' +
+      '<label>Firmenname *</label><input id="ws_company" value="' + esc(_wsData.companyName || '') + '">' +
+      '<label>Branche</label><input id="ws_branche" placeholder="z. B. Elektroinstallation" value="' + esc(_wsData.branche || '') + '">' +
+      '<label>Ort</label><input id="ws_city" placeholder="z. B. Stuttgart" value="' + esc(_wsData.city || '') + '">' +
+      '<label>Slogan (optional)</label><input id="ws_slogan" value="' + esc(_wsData.slogan || '') + '">' +
+      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button><button class="success" onclick="wsNext(1)">Weiter →</button></div>', 'wide');
+  }
+  function wsStep2() {
+    showModal('<h2>Website · Schritt 2/4 — Leistungen</h2>' +
+      '<p style="font-size:13px;color:#789;">Eine Leistung pro Zeile.</p>' +
+      '<textarea id="ws_services" rows="6" placeholder="Elektroinstallation\nSmart Home\nE-Ladestationen">' + esc((_wsData.services || []).join('\n')) + '</textarea>' +
+      '<label>Über uns / Betriebsbeschreibung (optional)</label><textarea id="ws_about" rows="4">' + esc(_wsData.about || '') + '</textarea>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsNext(2)">Weiter →</button></div>', 'wide');
+  }
+  function wsStep3() {
+    showModal('<h2>Website · Schritt 3/4 — Kontakt</h2>' +
+      '<div class="row2"><div><label>Telefon</label><input id="ws_phone" value="' + esc(_wsData.phone || '') + '"></div>' +
+      '<div><label>E-Mail</label><input id="ws_email" value="' + esc(_wsData.email || '') + '"></div></div>' +
+      '<label>Adresse</label><input id="ws_address" value="' + esc(_wsData.address || '') + '">' +
+      '<div class="row2"><div><label>PLZ</label><input id="ws_zip" value="' + esc(_wsData.zip || '') + '"></div>' +
+      '<div><label>Inhaber (für Impressum)</label><input id="ws_owner" value="' + esc(_wsData.owner || '') + '"></div></div>' +
+      '<label>USt-IdNr. (optional)</label><input id="ws_vat" value="' + esc(_wsData.vatId || '') + '">' +
+      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsNext(3)">Weiter →</button></div>', 'wide');
+  }
+  function wsStep4() {
+    var tpls = [['modern', 'Modern', 'Klar & frisch, blau'], ['bold', 'Bold', 'Kräftig, dunkler Hero'], ['classic', 'Klassisch', 'Seriös, serifenbetont']];
+    showModal('<h2>Website · Schritt 4/4 — Vorlage wählen</h2>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' + tpls.map(function (t) {
+        return '<label style="flex:1;min-width:140px;border:2px solid ' + (_wsData.template === t[0] ? '#1a5cff' : '#e3e9ef') + ';border-radius:10px;padding:12px;cursor:pointer;" onclick="_wsPick(\'' + t[0] + '\')" id="wstpl_' + t[0] + '">' +
+          '<b>' + t[1] + '</b><br><span style="font-size:12px;color:#789;">' + t[2] + '</span></label>';
+      }).join('') + '</div>' +
+      '<p style="font-size:12px;color:#789;margin-top:10px;">Die KI schreibt SEO-optimierte Texte aus deinen Angaben. Danach kannst du die Vorschau ansehen und veröffentlichen.</p>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsGenerate()">✨ Website generieren</button></div>', 'wide');
+  }
+  window._wsPick = function (t) { _wsData.template = t; wsStep4(); };
+  window.wsBack = function () { _wsStep = Math.max(0, _wsStep - 1); wsShowStep(); };
+  window.wsNext = function (step) {
+    if (step === 1) { _wsData.companyName = val('ws_company'); _wsData.branche = val('ws_branche'); _wsData.city = val('ws_city'); _wsData.slogan = val('ws_slogan'); if (!_wsData.companyName) { alert('Bitte Firmenname eingeben.'); return; } }
+    if (step === 2) { _wsData.services = (document.getElementById('ws_services').value || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean); _wsData.about = val('ws_about'); }
+    if (step === 3) { _wsData.phone = val('ws_phone'); _wsData.email = val('ws_email'); _wsData.address = val('ws_address'); _wsData.zip = val('ws_zip'); _wsData.owner = val('ws_owner'); _wsData.vatId = val('ws_vat'); }
+    _wsStep = Math.min(3, _wsStep + 1); wsShowStep();
+  };
+  window.wsGenerate = function () {
+    var biz = { companyName: _wsData.companyName, owner: _wsData.owner, branche: _wsData.branche, city: _wsData.city, phone: _wsData.phone, email: _wsData.email, address: _wsData.address, zip: _wsData.zip, vatId: _wsData.vatId };
+    showModal('<h2>✨ Website wird generiert …</h2><p>Die KI erstellt Texte und Layout. Das kann einen Moment dauern.</p>');
+    apiJson('/sites/generate', 'POST', { input: _wsData, business: biz, template: _wsData.template }).then(function (r) {
+      if (r.status !== 201) { toast('Generierung fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').'); if (typeof closeModal === 'function') closeModal(); return; }
+      if (typeof closeModal === 'function') closeModal();
+      toast('✓ Website erstellt' + (r.data.aiUsed ? ' (KI-Texte).' : '.'));
+      wsPreview(r.data.id);
+      renderWebsiteTab();
+    });
+  };
+  window.wsPreview = function (id) {
+    apiJson('/sites/' + id, 'GET').then(function (r) {
+      if (!r.data || !r.data.site) { toast('Vorschau nicht verfügbar.'); return; }
+      var html = r.data.site.pages['index.html'] || '';
+      showModal('<h2>Vorschau</h2><iframe style="width:100%;height:70vh;border:1px solid #e3e9ef;border-radius:8px;" srcdoc="' + esc(html).replace(/&#39;/g, "'") + '"></iframe>' +
+        '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Schließen</button>' +
+        (r.data.site.status !== 'published' ? '<button class="success" onclick="closeModal();wsPublish(\'' + id + '\')">Veröffentlichen</button>' : '') + '</div>', 'xwide');
+    });
+  };
+  window.wsPublish = function (id) {
+    var domain = prompt('Optional: eigene Domain (z. B. www.meinbetrieb.de) — leer lassen für werkflow-Adresse:', '');
+    apiJson('/sites/' + id + '/publish', 'POST', { domain: domain || '' }).then(function (r) {
+      if (r.data && r.data.ok) { toast('✓ Veröffentlicht: ' + r.data.publicUrl); renderWebsiteTab(); }
+      else toast('Veröffentlichung fehlgeschlagen.');
+    });
+  };
+  window.wsUnpublish = function (id) { apiJson('/sites/' + id + '/unpublish', 'POST', {}).then(function () { toast('Website offline genommen.'); renderWebsiteTab(); }); };
 })();
 </script>
 

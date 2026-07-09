@@ -59,6 +59,8 @@ module.exports = {
     planung:   { label: 'Einsatzplanung',        desc: 'Kalender, Mitarbeiter & Aufträge per Drag & Drop planen', appModules: ['calendar'], addonPriceEur: 8 },
     einkauf:   { label: 'Einkauf & Lager',       desc: 'Lieferanten, Bestellungen, Wareneingang per Foto, Lager & Materialbuchung', appModules: ['einkauf'], addonPriceEur: 10 },
     aufmass:   { label: 'Aufmaß & Raumplan',     desc: 'Digitales Raum-Aufmaß mit 2D-Grundriss, 3D-Vorschau, Mengen (Boden/Wand/Decke) & Übernahme ins Angebot', appModules: ['aufmass'], addonPriceEur: 12 },
+    buchhaltung: { label: 'Buchhaltung & Schnittstellen', desc: 'DATEV-Export, Lexoffice, Bankanbindung mit Zahlungsabgleich, Eingangsrechnungs-Inbox (ZUGFeRD/XRechnung), Händler-Bestellung (IDS/UGL/DATANORM), E-Mail-Versand', appModules: ['buchhaltung'], addonPriceEur: 19 },
+    website:   { label: 'Website-Baukasten',     desc: 'KI-generierte, SEO-optimierte & DSGVO-konforme Firmen-Website in 3 Vorlagen, per Workflow erstellt und mit eigener Domain veröffentlichbar', appModules: ['website'], addonPriceEur: 14 },
   },
 
   // Tarife — ein Preis pro Betrieb, niemals pro Nutzer (Produktregel Nr. 6).
@@ -88,4 +90,27 @@ module.exports = {
   // Rate-Limits (pro IP); für Tests via Env übersteuerbar
   REGISTER_LIMIT_PER_HOUR: Number(process.env.WERKOS_REGISTER_LIMIT || 10),
   LOGIN_IP_LIMIT: Number(process.env.WERKOS_LOGIN_IP_LIMIT || 20),
+
+  // ---- Ausgehender E-Mail-Versand (Angebote/Rechnungen, Steuerberater-Weiterleitung)
+  // SMTP (z.B. IONOS-Postfach) ODER ein HTTP-Mail-API-Endpoint. Leer = manueller Modus.
+  SMTP_HOST: process.env.WERKOS_SMTP_HOST || '',
+  SMTP_PORT: process.env.WERKOS_SMTP_PORT || 587,
+  SMTP_USER: process.env.WERKOS_SMTP_USER || '',
+  SMTP_PASS: process.env.WERKOS_SMTP_PASS || '',
+  SMTP_FROM: process.env.WERKOS_SMTP_FROM || process.env.WERKOS_SMTP_USER || '',
+  SMTP_SECURE: process.env.WERKOS_SMTP_SECURE || '',  // 'true' = implizites TLS (Port 465)
+  SMTP_STARTTLS: process.env.WERKOS_SMTP_STARTTLS || '', // 'false' = Klartext (nur lokale Relays/Tests)
+  SMTP_EHLO: process.env.WERKOS_SMTP_EHLO || '',
+  SMTP_TIMEOUT_MS: process.env.WERKOS_SMTP_TIMEOUT_MS || 20000,
+  MAIL_API_URL: process.env.WERKOS_MAIL_API_URL || '',
+  MAIL_API_KEY: process.env.WERKOS_MAIL_API_KEY || '',
+  MAX_MAIL_ATTACH_BYTES: 15 * 1024 * 1024,
+
+  // ---- Buchhaltungs-/Händler-Schnittstellen (Env-Defaults; pro Mandant übersteuerbar)
+  LEXOFFICE_API_URL: process.env.WERKOS_LEXOFFICE_URL || 'https://api.lexoffice.io',
+  // Eingehende Webhooks (Rechnungs-E-Mail-Inbox, IDS-Rückgabe, Bank-Push):
+  // gemeinsames Signatur-Secret; pro Mandant zusätzlich ein Inbox-Token (gehasht).
+  INBOUND_WEBHOOK_SECRET: process.env.WERKOS_INBOUND_SECRET || '',
+  // Öffentliche Basis-Domain für generierte Kunden-Websites (Website-Generator)
+  SITE_BASE_DOMAIN: process.env.WERKOS_SITE_DOMAIN || '',
 };

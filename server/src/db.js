@@ -205,6 +205,63 @@ CREATE TABLE IF NOT EXISTS audit_log (
   hash        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS audit_tenant ON audit_log(tenant_id, seq);
+
+-- Schnittstellen-Konfiguration pro Mandant (Lexoffice, DATEV, IDS, Bank, Mail,
+-- Rechnungs-Inbox …). config_json = nicht-geheime Einstellungen + API-Keys
+-- (serverseitig). inbox_token_hash = gehashtes Token für eingehende Webhooks.
+CREATE TABLE IF NOT EXISTS integration_settings (
+  tenant_id        TEXT NOT NULL REFERENCES tenants(id),
+  kind             TEXT NOT NULL,
+  config_json      TEXT NOT NULL DEFAULT '{}',
+  inbox_token_hash TEXT,
+  status           TEXT NOT NULL DEFAULT 'active',
+  updated_at       TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, kind)
+);
+CREATE INDEX IF NOT EXISTS integ_inbox_token ON integration_settings(inbox_token_hash);
+
+-- Eingehende Posten, die die App abholt und nach Bestätigung übernimmt
+-- (Eingangsrechnung, Händler-Bestellung aus Punchout, Bank-Transaktion).
+CREATE TABLE IF NOT EXISTS integration_inbox (
+  id           TEXT PRIMARY KEY,
+  tenant_id    TEXT NOT NULL REFERENCES tenants(id),
+  kind         TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'new',
+  source       TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS integ_inbox_tenant ON integration_inbox(tenant_id, status, created_at);
+
+-- Vom Website-Generator erzeugte Kunden-Websites (öffentlich unter Slug/Domain).
+CREATE TABLE IF NOT EXISTS generated_sites (
+  id           TEXT PRIMARY KEY,
+  tenant_id    TEXT NOT NULL REFERENCES tenants(id),
+  slug         TEXT UNIQUE NOT NULL,
+  domain       TEXT,
+  template     TEXT NOT NULL DEFAULT 'modern',
+  status       TEXT NOT NULL DEFAULT 'draft',
+  input_json   TEXT NOT NULL DEFAULT '{}',
+  content_json TEXT NOT NULL DEFAULT '{}',
+  pages_json   TEXT NOT NULL DEFAULT '{}',
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sites_tenant ON generated_sites(tenant_id);
+CREATE INDEX IF NOT EXISTS sites_domain ON generated_sites(domain);
+
+-- Protokoll ausgehender E-Mails (Angebote/Rechnungen/Weiterleitungen) – Nachweis.
+CREATE TABLE IF NOT EXISTS mail_log (
+  id         TEXT PRIMARY KEY,
+  tenant_id  TEXT NOT NULL REFERENCES tenants(id),
+  recipient  TEXT NOT NULL,
+  subject    TEXT,
+  kind       TEXT,
+  status     TEXT NOT NULL,
+  error      TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mail_tenant ON mail_log(tenant_id, created_at);
 `);
 
 // ---------------------------------------------------------------------------
@@ -529,6 +586,10 @@ function purgeTenant(tenantId) {
   db.exec('BEGIN');
   try {
     tx('DELETE FROM leads WHERE tenant_id = ?').run(tenantId); // DSGVO: Lead-Daten mitlöschen
+    tx('DELETE FROM integration_settings WHERE tenant_id = ?').run(tenantId);
+    tx('DELETE FROM integration_inbox WHERE tenant_id = ?').run(tenantId);
+    tx('DELETE FROM generated_sites WHERE tenant_id = ?').run(tenantId);
+    tx('DELETE FROM mail_log WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM module_grants WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM subscriptions WHERE tenant_id = ?').run(tenantId);
     tx("UPDATE sales_offers SET company = '[gelöscht]', contact_name = NULL, email = '[gelöscht]', phone = NULL WHERE tenant_id = ?").run(tenantId);
@@ -551,8 +612,96 @@ function purgeDueTenants() {
   return due.length;
 }
 
+// ---------------------------------------------------------------------------
+// Schnittstellen: Konfiguration, Inbox, Websites, Mail-Log
+// ---------------------------------------------------------------------------
+function setIntegration(tenantId, kind, configObj, inboxTokenHash) {
+  const cur = getIntegration(tenantId, kind);
+  const cfgJson = JSON.stringify(configObj || (cur ? JSON.parse(cur.config_json) : {}));
+  const tokenHash = inboxTokenHash !== undefined ? inboxTokenHash : (cur ? cur.inbox_token_hash : null);
+  db.prepare(`INSERT INTO integration_settings (tenant_id, kind, config_json, inbox_token_hash, status, updated_at)
+    VALUES (?,?,?,?,?,?)
+    ON CONFLICT(tenant_id, kind) DO UPDATE SET config_json=excluded.config_json, inbox_token_hash=excluded.inbox_token_hash, updated_at=excluded.updated_at`)
+    .run(tenantId, kind, cfgJson, tokenHash, 'active', nowIso());
+  return getIntegration(tenantId, kind);
+}
+function getIntegration(tenantId, kind) {
+  return db.prepare('SELECT * FROM integration_settings WHERE tenant_id = ? AND kind = ?').get(tenantId, kind) || null;
+}
+function listIntegrations(tenantId) {
+  return db.prepare('SELECT * FROM integration_settings WHERE tenant_id = ?').all(tenantId);
+}
+function findTenantByInboxToken(kind, tokenHash) {
+  return db.prepare('SELECT * FROM integration_settings WHERE kind = ? AND inbox_token_hash = ?').get(kind, tokenHash) || null;
+}
+
+function addInboxItem({ tenantId, kind, source, payload }) {
+  const iid = id('inb');
+  db.prepare('INSERT INTO integration_inbox (id, tenant_id, kind, status, source, payload_json, created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(iid, tenantId, kind, 'new', source || '', JSON.stringify(payload || {}), nowIso());
+  return iid;
+}
+function listInbox(tenantId, status) {
+  const rows = status
+    ? db.prepare('SELECT * FROM integration_inbox WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC').all(tenantId, status)
+    : db.prepare('SELECT * FROM integration_inbox WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
+  return rows.map((r) => Object.assign(r, { payload: safeJson(r.payload_json) }));
+}
+function setInboxStatus(tenantId, itemId, status) {
+  const r = db.prepare('UPDATE integration_inbox SET status = ? WHERE id = ? AND tenant_id = ?').run(status, itemId, tenantId);
+  return r.changes > 0;
+}
+
+function upsertSite(site) {
+  const now = nowIso();
+  if (site.id) {
+    db.prepare(`UPDATE generated_sites SET domain=?, template=?, status=?, input_json=?, content_json=?, pages_json=?, updated_at=?
+      WHERE id=? AND tenant_id=?`)
+      .run(site.domain || '', site.template || 'modern', site.status || 'draft',
+        JSON.stringify(site.input || {}), JSON.stringify(site.content || {}), JSON.stringify(site.pages || {}), now, site.id, site.tenantId);
+    return site.id;
+  }
+  const sid = id('site');
+  db.prepare(`INSERT INTO generated_sites (id, tenant_id, slug, domain, template, status, input_json, content_json, pages_json, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(sid, site.tenantId, site.slug, site.domain || '', site.template || 'modern', site.status || 'draft',
+      JSON.stringify(site.input || {}), JSON.stringify(site.content || {}), JSON.stringify(site.pages || {}), now, now);
+  return sid;
+}
+function getSite(tenantId, siteId) {
+  const r = db.prepare('SELECT * FROM generated_sites WHERE id = ? AND tenant_id = ?').get(siteId, tenantId);
+  return r ? hydrateSite(r) : null;
+}
+function listSites(tenantId) {
+  return db.prepare('SELECT id, slug, domain, template, status, updated_at FROM generated_sites WHERE tenant_id = ? ORDER BY updated_at DESC').all(tenantId);
+}
+function findPublishedSite(slugOrDomain) {
+  const r = db.prepare("SELECT * FROM generated_sites WHERE status = 'published' AND (slug = ? OR domain = ?) LIMIT 1").get(slugOrDomain, slugOrDomain);
+  return r ? hydrateSite(r) : null;
+}
+function slugTaken(slug, exceptTenant) {
+  const r = db.prepare('SELECT tenant_id FROM generated_sites WHERE slug = ?').get(slug);
+  return !!(r && r.tenant_id !== exceptTenant);
+}
+function hydrateSite(r) {
+  return Object.assign(r, { input: safeJson(r.input_json), content: safeJson(r.content_json), pages: safeJson(r.pages_json) });
+}
+
+function logMail({ tenantId, recipient, subject, kind, status, error }) {
+  db.prepare('INSERT INTO mail_log (id, tenant_id, recipient, subject, kind, status, error, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id('mail'), tenantId, recipient || '', subject || '', kind || '', status || '', error || '', nowIso());
+}
+function listMailLog(tenantId, limit) {
+  return db.prepare('SELECT * FROM mail_log WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?').all(tenantId, limit || 100);
+}
+function safeJson(s) { try { return JSON.parse(s); } catch (_e) { return {}; } }
+
 module.exports = {
   db, audit, auditList, auditVerify,
+  setIntegration, getIntegration, listIntegrations, findTenantByInboxToken,
+  addInboxItem, listInbox, setInboxStatus,
+  upsertSite, getSite, listSites, findPublishedSite, slugTaken,
+  logMail, listMailLog,
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
   getTenantSettings, setTenantModuleOverrides,
   createLead, listLeads, deleteLead,

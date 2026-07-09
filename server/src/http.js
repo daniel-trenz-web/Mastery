@@ -36,10 +36,11 @@ function send(res, status, obj, headers) {
     'Cache-Control': 'no-store',
   }, headers || {}));
   res.end(body);
+  return res; // wahrheitswert, damit Aufrufer "behandelt" erkennen können
 }
 
 function err(res, status, code, extra) {
-  send(res, status, Object.assign({ error: code }, extra || {}));
+  return send(res, status, Object.assign({ error: code }, extra || {}));
 }
 
 function clientIp(req) {

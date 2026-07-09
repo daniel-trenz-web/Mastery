@@ -12,6 +12,16 @@ const cfg = require('./config');
 const dbm = require('./db');
 const zip = require('./zip');
 const ai = require('./ai');
+const mail = require('./mail');
+const einvoice = require('./integrations/einvoice');
+const bankstmt = require('./integrations/bankstatements');
+const { reconcile } = require('./integrations/reconcile');
+const datev = require('./integrations/datev');
+const datanorm = require('./integrations/datanorm');
+const ugl = require('./integrations/ugl');
+const ids = require('./integrations/ids');
+const lexoffice = require('./integrations/lexoffice');
+const sitegen = require('./integrations/sitegen');
 const {
   id, nowIso, hashPassword, verifyPassword, signToken, opaqueToken,
   rateLimit, normEmail, isEmail, sha256,
@@ -820,7 +830,298 @@ async function handleApi(req, res, pathname) {
     return err(res, 404, 'not-found');
   }
 
+  // ==========================================================================
+  // Schnittstellen & Buchhaltung + Website-Generator
+  // ==========================================================================
+  const integ = await handleIntegrations(req, res, pathname, m);
+  if (integ !== undefined) return integ;
+
   return err(res, 404, 'not-found');
+}
+
+// Basis-URL des Requests (für Hook-/Webhook-Rücksprung-Links)
+function reqBaseUrl(req) {
+  if (cfg.BASE_URL) return cfg.BASE_URL.replace(/\/$/, '');
+  const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+  return proto + '://' + host;
+}
+function accountingAllowed(tenant) { return moduleAllowed(tenant, 'buchhaltung'); }
+
+// Liefert undefined, wenn keine Integrations-Route passt (→ Aufrufer macht 404).
+async function handleIntegrations(req, res, pathname, m) {
+  // ---- Öffentliche Website-Auslieferung: /api/public/site/<slug>[/<page>] ----
+  const siteView = pathname.match(/^\/api\/public\/site\/([a-z0-9-]{2,64})(?:\/([a-z0-9-]+\.(?:html|xml|txt)))?$/);
+  if (siteView && m === 'GET') {
+    if (!rateLimit('site:' + clientIp(req), 300, 900e3)) return err(res, 429, 'rate-limited');
+    const site = dbm.findPublishedSite(siteView[1]);
+    if (!site) return err(res, 404, 'not-found');
+    const page = siteView[2] || 'index.html';
+    if (page === 'sitemap.xml') return send(res, 200, site.pages['sitemap.xml'] || '', { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+    if (page === 'robots.txt') return send(res, 200, site.pages['robots.txt'] || 'User-agent: *\nAllow: /\n', { 'Content-Type': 'text/plain; charset=utf-8' });
+    const html = site.pages[page];
+    if (html == null) return err(res, 404, 'not-found');
+    return send(res, 200, html, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+  }
+
+  // ---- Eingehende Webhooks (kein Login; Signatur + gehashtes Inbox-Token) ----
+  const inboundInv = pathname.match(/^\/api\/public\/inbound\/invoice\/([A-Za-z0-9_-]{16,})$/);
+  if (inboundInv && m === 'POST') {
+    if (!rateLimit('inb:' + clientIp(req), 120, 900e3)) return err(res, 429, 'rate-limited');
+    if (!cfg.INBOUND_WEBHOOK_SECRET || req.headers['x-werkflow-signature'] !== cfg.INBOUND_WEBHOOK_SECRET) return err(res, 401, 'bad-signature');
+    const owner = dbm.findTenantByInboxToken('invoice_inbox', sha256(inboundInv[1]));
+    if (!owner) return err(res, 404, 'unknown-inbox');
+    const buf = await readBody(req, cfg.MAX_FILE_BYTES + 1024);
+    const ctype = (req.headers['content-type'] || '').split(';')[0];
+    let parsed = einvoice.parseEInvoice(buf, ctype);
+    let via = parsed.ok ? parsed.format : 'ki';
+    let data = parsed.ok ? parsed.data : null;
+    if (!parsed.ok && ai.isConfigured()) {
+      const r = await ai.extractIncomingInvoice(buf, ctype || 'application/pdf');
+      if (r.ok) data = r.data;
+    }
+    const iid = dbm.addInboxItem({ tenantId: owner.tenant_id, kind: 'invoice', source: 'email', payload: { via, data, ok: !!data } });
+    // Weiterleitung an Steuerberater, falls konfiguriert
+    const stb = safeParse(dbm.getIntegration(owner.tenant_id, 'invoice_inbox') || {}).forwardTo;
+    if (stb && mail.isConfigured()) {
+      const r = await mail.sendMail({ to: stb, subject: 'Eingangsrechnung' + (data && data.invoiceNumber ? ' ' + data.invoiceNumber : ''), text: 'Automatische Weiterleitung durch werkflow.', attachments: [{ filename: 'rechnung' + (ctype.includes('pdf') ? '.pdf' : '.xml'), contentType: ctype || 'application/octet-stream', content: buf }] });
+      dbm.logMail({ tenantId: owner.tenant_id, recipient: stb, subject: 'Eingangsrechnung-Weiterleitung', kind: 'stb-forward', status: r.ok ? 'sent' : 'failed', error: r.ok ? '' : r.error });
+    }
+    return send(res, 200, { ok: true, inboxId: iid, parsed: !!data });
+  }
+  const inboundIds = pathname.match(/^\/api\/public\/ids\/return\/([A-Za-z0-9_-]{16,})$/);
+  if (inboundIds && m === 'POST') {
+    if (!rateLimit('idsr:' + clientIp(req), 120, 900e3)) return err(res, 429, 'rate-limited');
+    const owner = dbm.findTenantByInboxToken('ids', sha256(inboundIds[1]));
+    if (!owner) return err(res, 404, 'unknown-inbox');
+    const buf = await readBody(req, 2e6);
+    const ctype = req.headers['content-type'] || '';
+    const basket = ids.parseBasketReturn(buf.toString('utf8'), ctype);
+    const iid = dbm.addInboxItem({ tenantId: owner.tenant_id, kind: 'order', source: 'ids', payload: basket });
+    return send(res, 200, { ok: true, inboxId: iid, positions: basket.count });
+  }
+  const inboundBank = pathname.match(/^\/api\/public\/bank\/push\/([A-Za-z0-9_-]{16,})$/);
+  if (inboundBank && m === 'POST') {
+    if (!rateLimit('bankp:' + clientIp(req), 120, 900e3)) return err(res, 429, 'rate-limited');
+    if (!cfg.INBOUND_WEBHOOK_SECRET || req.headers['x-werkflow-signature'] !== cfg.INBOUND_WEBHOOK_SECRET) return err(res, 401, 'bad-signature');
+    const owner = dbm.findTenantByInboxToken('bank', sha256(inboundBank[1]));
+    if (!owner) return err(res, 404, 'unknown-inbox');
+    const b = await readJson(req, 4e6);
+    const txs = Array.isArray(b.transactions) ? b.transactions : [];
+    const iid = dbm.addInboxItem({ tenantId: owner.tenant_id, kind: 'bank-tx', source: 'psd2', payload: { transactions: txs } });
+    return send(res, 200, { ok: true, inboxId: iid, count: txs.length });
+  }
+
+  // ---- Ab hier: authentifizierte Mandanten-Endpunkte ----
+  if (!pathname.startsWith('/api/t/')) return undefined;
+
+  // Integrations-Übersicht & Konfiguration
+  if (pathname === '/api/t/integrations' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant) && !moduleAllowed(ctx.tenant, 'website')) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const conns = dbm.listIntegrations(ctx.tenant.id).map((c) => ({ kind: c.kind, config: redact(safeParse(c)), hasInbox: !!c.inbox_token_hash, status: c.status, updatedAt: c.updated_at }));
+    return send(res, 200, { integrations: conns, inboxCount: dbm.listInbox(ctx.tenant.id, 'new').length, mailConfigured: mail.isConfigured(), aiConfigured: ai.isConfigured() });
+  }
+  const integSet = pathname.match(/^\/api\/t\/integrations\/([a-z_]+)$/);
+  if (integSet && m === 'PUT') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const kind = integSet[1];
+    const b = await readJson(req, 32e3);
+    let tokenHash; let address;
+    if (b.regenerateInboxToken || (['invoice_inbox', 'ids', 'bank'].includes(kind) && !(dbm.getIntegration(ctx.tenant.id, kind) || {}).inbox_token_hash)) {
+      const t = opaqueToken();
+      tokenHash = t.hash;
+      address = inboxAddressFor(kind, t.token, ctx.tenant, req);
+      b._inboxTokenOnce = undefined;
+    }
+    const saved = dbm.setIntegration(ctx.tenant.id, kind, b.config || {}, tokenHash);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'integration.configured', { kind });
+    return send(res, 200, { ok: true, kind, hasInbox: !!saved.inbox_token_hash, inboxAddress: address });
+  }
+
+  // Inbox: abholen / übernehmen / verwerfen
+  if (pathname === '/api/t/inbox' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    return send(res, 200, { items: dbm.listInbox(ctx.tenant.id, 'new') });
+  }
+  const inboxAct = pathname.match(/^\/api\/t\/inbox\/([^/]+)\/(import|dismiss)$/);
+  if (inboxAct && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    const ok = dbm.setInboxStatus(ctx.tenant.id, inboxAct[1], inboxAct[2] === 'import' ? 'imported' : 'dismissed');
+    return ok ? send(res, 200, { ok: true }) : err(res, 404, 'not-found');
+  }
+
+  // Katalog-Import (DATANORM/CSV)
+  if (pathname === '/api/t/purchasing/catalog' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!moduleAllowed(ctx.tenant, 'einkauf') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'einkauf' });
+    const buf = await readBody(req, cfg.MAX_FILE_BYTES);
+    const parsed = datanorm.parseCatalog(buf, req.headers['content-type'] || '');
+    return send(res, 200, { ok: true, format: parsed.format, count: parsed.articles.length, articles: parsed.articles.slice(0, 5000) });
+  }
+  // IDS-Punchout starten
+  if (pathname === '/api/t/purchasing/ids/punchout' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const conn = safeParse(dbm.getIntegration(ctx.tenant.id, 'ids') || {});
+    const b = await readJson(req, 8e3);
+    const connection = Object.assign({}, conn, b.connection || {});
+    // Rücksprung an unseren IDS-Return-Webhook mit dem Inbox-Token des Mandanten
+    const rec = dbm.getIntegration(ctx.tenant.id, 'ids');
+    const hookUrl = reqBaseUrl(req) + '/api/public/ids/return/' + (b.hookToken || 'CONFIGURE-TOKEN');
+    return send(res, 200, ids.buildPunchout(connection, { hookUrl }));
+  }
+  // UGL-Bestelldatei erzeugen
+  if (pathname === '/api/t/purchasing/ugl' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 512e3);
+    const text = ugl.buildUglOrder(b.order || {}, b.meta || {});
+    return send(res, 200, text, { 'Content-Type': 'text/plain; charset=utf-8' });
+  }
+
+  // E-Rechnung parsen (XML/PDF) – Upload
+  if (pathname === '/api/t/invoices/parse' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const buf = await readBody(req, cfg.MAX_FILE_BYTES);
+    const ctype = (req.headers['content-type'] || '').split(';')[0];
+    let parsed = einvoice.parseEInvoice(buf, ctype);
+    if (parsed.ok) return send(res, 200, { ok: true, via: parsed.format, data: parsed.data });
+    if (ai.isConfigured()) {
+      const r = await ai.extractIncomingInvoice(buf, ctype || 'application/pdf');
+      if (r.ok) return send(res, 200, { ok: true, via: 'ki', data: r.data });
+      return send(res, 200, { ok: false, via: 'ki', error: r.error || 'ki-failed' });
+    }
+    return send(res, 200, { ok: false, error: parsed.error || 'no-einvoice', configured: false });
+  }
+
+  // Bank: Kontoauszug importieren + Zahlungsabgleich
+  if (pathname === '/api/t/bank/import' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const buf = await readBody(req, cfg.MAX_FILE_BYTES);
+    const out = bankstmt.parseStatement(buf, req.headers['content-type'] || '');
+    return send(res, 200, { ok: true, format: out.format, count: out.transactions.length, transactions: out.transactions });
+  }
+  if (pathname === '/api/t/bank/reconcile' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 4e6);
+    return send(res, 200, reconcile(b.transactions || [], b.openItems || [], b.opts || {}));
+  }
+
+  // DATEV-Export
+  if (pathname === '/api/t/datev/export' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 4e6);
+    const bookings = b.bookings || datev.invoicesToBookings(b.items || [], b.cfg || {});
+    const csv = datev.buildBuchungsstapel(bookings, b.meta || {});
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'datev.export', { rows: bookings.length });
+    return send(res, 200, csv, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="EXTF_Buchungsstapel.csv"' });
+  }
+
+  // Lexoffice: Verbindung testen / Beleg übertragen
+  if (pathname === '/api/t/lexoffice/test' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const key = (safeParse(dbm.getIntegration(ctx.tenant.id, 'lexoffice') || {}).apiKey) || '';
+    return send(res, 200, await lexoffice.testConnection(key));
+  }
+  if (pathname === '/api/t/lexoffice/push' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const key = (safeParse(dbm.getIntegration(ctx.tenant.id, 'lexoffice') || {}).apiKey) || '';
+    const b = await readJson(req, 256e3);
+    const r = await lexoffice.pushVoucher(key, b.invoice || {}, b.kind || 'salesinvoice');
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'lexoffice.push', { ok: r.ok });
+    return send(res, 200, r);
+  }
+
+  // E-Mail-Versand (Angebote/Rechnungen)
+  if (pathname === '/api/t/mail/send' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!moduleAllowed(ctx.tenant, 'geld') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'geld' });
+    if (!mail.isConfigured()) return send(res, 200, { ok: false, configured: false, hint: 'E-Mail-Versand nicht konfiguriert – Link teilen als Alternative.' });
+    const b = await readJson(req, cfg.MAX_MAIL_ATTACH_BYTES + 64e3);
+    if (!b.to || !b.subject) return err(res, 400, 'to-and-subject-required');
+    const atts = (b.attachments || []).map((a) => ({ filename: a.filename, contentType: a.contentType, content: Buffer.from(String(a.contentBase64 || ''), 'base64') }));
+    const from = (safeParse(dbm.getIntegration(ctx.tenant.id, 'mail') || {}).from) || cfg.SMTP_FROM;
+    const r = await mail.sendMail({ to: b.to, cc: b.cc, subject: b.subject, text: b.text || '', html: b.html, replyTo: b.replyTo || from, from, fromName: b.fromName, attachments: atts });
+    dbm.logMail({ tenantId: ctx.tenant.id, recipient: Array.isArray(b.to) ? b.to.join(',') : b.to, subject: b.subject, kind: b.kind || 'mail', status: r.ok ? 'sent' : 'failed', error: r.ok ? '' : (r.error || '') });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'mail.sent', { kind: b.kind || 'mail', ok: r.ok });
+    return send(res, 200, r);
+  }
+
+  // ---- Website-Generator ----
+  if (pathname === '/api/t/sites' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'website')) return err(res, 403, 'module-not-active', { module: 'website' });
+    return send(res, 200, { sites: dbm.listSites(ctx.tenant.id), baseUrl: reqBaseUrl(req) + '/api/public/site/' });
+  }
+  if (pathname === '/api/t/sites/generate' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!moduleAllowed(ctx.tenant, 'website')) return err(res, 403, 'module-not-active', { module: 'website' });
+    const b = await readJson(req, 256e3);
+    const input = b.input || {};
+    const biz = b.business || input;
+    let aiContent = null; let aiUsed = false;
+    if (ai.isConfigured() && b.useAi !== false) {
+      const r = await ai.generateWebsiteContent(input);
+      if (r.ok) { aiContent = r.data; aiUsed = true; }
+    }
+    let slug = sitegen.slugify(b.slug || biz.companyName || biz.name || 'website');
+    let n = 1; while (dbm.slugTaken(slug, ctx.tenant.id)) slug = sitegen.slugify((biz.companyName || 'website')) + '-' + (++n);
+    const canonical = reqBaseUrl(req) + '/api/public/site/' + slug + '/index.html';
+    const rendered = sitegen.renderSite(aiContent, biz, { template: b.template || 'modern', input, canonical });
+    const pages = Object.assign({}, rendered.pages, { 'sitemap.xml': rendered['sitemap.xml'], 'robots.txt': rendered['robots.txt'] });
+    const siteId = dbm.upsertSite({ id: b.id || undefined, tenantId: ctx.tenant.id, slug, template: rendered.template, status: 'draft', input, content: rendered.content, pages });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'site.generated', { slug, aiUsed });
+    return send(res, 201, { ok: true, id: siteId, slug, template: rendered.template, aiUsed, previewUrl: reqBaseUrl(req) + '/api/public/site/' + slug + '/index.html', content: rendered.content });
+  }
+  const siteId = pathname.match(/^\/api\/t\/sites\/([^/]+)$/);
+  if (siteId && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'website')) return err(res, 403, 'module-not-active', { module: 'website' });
+    const site = dbm.getSite(ctx.tenant.id, siteId[1]);
+    return site ? send(res, 200, { site }) : err(res, 404, 'not-found');
+  }
+  const sitePub = pathname.match(/^\/api\/t\/sites\/([^/]+)\/(publish|unpublish)$/);
+  if (sitePub && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!moduleAllowed(ctx.tenant, 'website')) return err(res, 403, 'module-not-active', { module: 'website' });
+    const site = dbm.getSite(ctx.tenant.id, sitePub[1]);
+    if (!site) return err(res, 404, 'not-found');
+    const b = await readJson(req, 8e3).catch(() => ({}));
+    if (b && b.domain !== undefined) site.domain = String(b.domain || '').toLowerCase().replace(/[^a-z0-9.-]/g, '');
+    site.status = sitePub[2] === 'publish' ? 'published' : 'draft';
+    site.tenantId = ctx.tenant.id;
+    dbm.upsertSite(site);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'site.' + sitePub[2], { slug: site.slug, domain: site.domain });
+    return send(res, 200, { ok: true, status: site.status, publicUrl: reqBaseUrl(req) + '/api/public/site/' + site.slug + '/index.html', domain: site.domain });
+  }
+
+  return undefined;
+}
+
+function safeParse(row) { try { return JSON.parse(row.config_json || '{}'); } catch (_e) { return {}; } }
+function redact(cfgObj) {
+  const c = Object.assign({}, cfgObj);
+  for (const k of Object.keys(c)) if (/key|pass|secret|token/i.test(k) && c[k]) c[k] = '••••';
+  return c;
+}
+function inboxAddressFor(kind, token, tenant, req) {
+  if (kind === 'invoice_inbox') return 'rechnung.' + token.slice(0, 12) + '@' + (cfg.SITE_BASE_DOMAIN || 'inbound.werkflow.de');
+  return reqBaseUrl(req) + '/api/public/' + (kind === 'ids' ? 'ids/return' : 'bank/push') + '/' + token;
 }
 
 module.exports = { handleApi };
