@@ -55959,7 +55959,11 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
 
     // Bank
     html += card('🏦 Bank &amp; Zahlungen',
-      '<p style="font-size:13px;">Kontoauszug importieren (CAMT.053 / MT940 / CSV) — werkflow gleicht Zahlungen automatisch mit offenen Rechnungen ab.</p>' +
+      '<div style="background:#eef7f0;border:1px solid #bfe3cb;border-radius:8px;padding:12px;margin-bottom:12px;">' +
+      '<b>🔒 Konto sicher verbinden (PSD2)</b>' +
+      '<p style="font-size:12.5px;color:#3a5;margin:6px 0;">Sichere Anbindung über einen BaFin-lizenzierten Kontoinformationsdienst: Du meldest dich <b>direkt bei deiner Bank</b> an (TAN) — werkflow speichert <b>kein Bank-Passwort</b> und liest nur Umsätze (read-only). Zugriffs-Referenzen werden verschlüsselt abgelegt.</p>' +
+      '<div id="psd2Box" style="font-size:13px;">Lädt…</div></div>' +
+      '<p style="font-size:13px;">Alternativ: Kontoauszug importieren (CAMT.053 / MT940 / CSV) — werkflow gleicht Zahlungen automatisch mit offenen Rechnungen ab.</p>' +
       '<input type="file" id="bkFile" accept=".xml,.txt,.sta,.csv,.mt940">' +
       '<p style="margin-top:8px;"><button class="success" onclick="bhBankImport()">Auszug einlesen &amp; abgleichen</button></p>' +
       '<div id="bkResult"></div>');
@@ -56089,7 +56093,57 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       bhRenderInbox(r.data.inboxCount || 0);
     });
     apiJson('/inbox', 'GET').then(function (r) { if (r.status === 200) { _inbox = (r.data && r.data.items) || []; bhRenderInbox(_inbox.length); } });
+    bhPsd2Load();
   }
+
+  // ---- Sichere PSD2-Bankanbindung ----
+  window.bhPsd2Load = function () {
+    var box = document.getElementById('psd2Box'); if (!box) return;
+    if (!online()) { box.innerHTML = 'Nur mit werkflow-Server verfügbar.'; return; }
+    apiJson('/bank/psd2/status', 'GET').then(function (r) {
+      if (!r.data || r.status !== 200) { box.innerHTML = 'Status nicht verfügbar.'; return; }
+      if (r.data.connected) {
+        var accs = (r.data.accounts || []).map(function (a) { return esc(a.iban || a.id); }).join(', ');
+        box.innerHTML = '<div style="color:#1e8449;">✓ Verbunden mit <b>' + esc(r.data.institutionName || 'Bank') + '</b>' + (accs ? ' · ' + accs : '') + '</div>' +
+          (r.data.lastSync ? '<div style="color:#789;font-size:12px;">Letzter Abgleich: ' + esc(new Date(r.data.lastSync).toLocaleString('de-DE')) + '</div>' : '') +
+          '<p style="margin-top:8px;"><button class="success small" onclick="bhPsd2Sync()">🔄 Umsätze abrufen</button> ' +
+          '<button class="danger small" onclick="bhPsd2Disconnect()">Trennen</button></p>';
+      } else if (r.data.status && r.data.status !== 'LN') {
+        box.innerHTML = '<div style="color:#b9770e;">Verbindung gestartet — bitte Bank-Login abschließen.</div><p style="margin-top:6px;"><button class="secondary small" onclick="bhPsd2Load()">Status prüfen</button></p>';
+      } else {
+        box.innerHTML = '<button class="success small" onclick="bhPsd2Pick()">Bank auswählen &amp; verbinden</button>';
+      }
+    });
+  };
+  window.bhPsd2Pick = function () {
+    var box = document.getElementById('psd2Box');
+    box.innerHTML = 'Banken werden geladen…';
+    apiJson('/bank/psd2/institutions?country=de', 'GET').then(function (r) {
+      if (!r.data || !r.data.configured) { box.innerHTML = '<div style="color:#b9770e;">PSD2-Anbindung ist auf dem Server noch nicht konfiguriert (Anbieter-Zugangsdaten fehlen).</div>'; return; }
+      if (!r.data.institutions || !r.data.institutions.length) { box.innerHTML = 'Keine Banken gefunden.'; return; }
+      var opts = r.data.institutions.map(function (i) { return '<option value="' + esc(i.id) + '">' + esc(i.name) + (i.bic ? ' (' + esc(i.bic) + ')' : '') + '</option>'; }).join('');
+      box.innerHTML = '<select id="psd2Bank" style="max-width:100%;">' + opts + '</select> ' +
+        '<button class="success small" onclick="bhPsd2Connect()">Verbinden →</button>';
+    });
+  };
+  window.bhPsd2Connect = function () {
+    var sel = document.getElementById('psd2Bank'); if (!sel) return;
+    var id = sel.value, name = sel.options[sel.selectedIndex].text;
+    apiJson('/bank/psd2/connect', 'POST', { institutionId: id, institutionName: name }).then(function (r) {
+      if (r.data && r.data.link) { toast('Weiterleitung zur Bank …'); window.open(r.data.link, '_blank'); document.getElementById('psd2Box').innerHTML = '<div style="color:#b9770e;">Bitte im neuen Fenster bei deiner Bank anmelden und die Freigabe erteilen.</div><p style="margin-top:6px;"><button class="secondary small" onclick="bhPsd2Load()">Fertig — Status prüfen</button></p>'; }
+      else toast('Verbindung fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
+    });
+  };
+  window.bhPsd2Sync = function () {
+    apiJson('/bank/psd2/sync', 'POST').then(function (r) {
+      if (r.data && r.data.ok) { toast('✓ ' + r.data.added + ' neue Umsätze abgerufen — im Posteingang zum Abgleich.'); renderBuchhaltungTab(); }
+      else toast('Abruf fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
+    });
+  };
+  window.bhPsd2Disconnect = function () {
+    if (!confirm('Bankverbindung wirklich trennen?')) return;
+    apiJson('/bank/psd2/disconnect', 'POST').then(function () { toast('Bankverbindung getrennt.'); bhPsd2Load(); });
+  };
   function setVal(id, v) { var el = document.getElementById(id); if (el && v != null) el.value = v; }
 
   function bhRenderInbox(count) {

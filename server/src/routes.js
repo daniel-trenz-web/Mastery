@@ -29,6 +29,8 @@ const gobd = require('./integrations/gobd');
 const payroll = require('./integrations/payroll');
 const ical = require('./integrations/ical');
 const weather = require('./integrations/weather');
+const psd2 = require('./integrations/psd2');
+const secure = require('./secure');
 const zipm = require('./zip');
 const {
   id, nowIso, hashPassword, verifyPassword, signToken, opaqueToken,
@@ -1207,6 +1209,83 @@ async function handleIntegrations(req, res, pathname, m) {
     return send(res, 200, { ok: true, feedUrl: url, count: (b.events || []).length });
   }
 
+  // ---- Sichere PSD2-Bankanbindung (AIS, read-only, Bank-Login bei der Bank) ----
+  if (pathname === '/api/t/bank/psd2/institutions' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    if (!psd2.isConfigured()) return send(res, 200, { configured: false });
+    const tk = await psd2.getToken(); if (!tk.ok) return send(res, 200, { configured: true, ok: false, error: tk.error });
+    const u = new URL(req.url, 'http://x');
+    const r = await psd2.listInstitutions(u.searchParams.get('country') || 'de', tk.access);
+    return send(res, 200, Object.assign({ configured: true }, r));
+  }
+  if (pathname === '/api/t/bank/psd2/connect' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    if (!psd2.isConfigured()) return send(res, 200, { configured: false });
+    const b = await readJson(req, 8e3);
+    if (!b.institutionId) return err(res, 400, 'institution-required');
+    const tk = await psd2.getToken(); if (!tk.ok) return send(res, 200, { ok: false, error: tk.error });
+    const reference = 'wf-' + ctx.tenant.id.slice(0, 10) + '-' + Date.now();
+    const redirect = reqBaseUrl(req) + '/app?bank=connected';
+    const r = await psd2.createRequisition({ institutionId: b.institutionId, redirect: redirect, reference: reference }, tk.access);
+    if (!r.ok) return send(res, 200, { ok: false, error: r.error, detail: r.data });
+    savePsd2(ctx.tenant.id, { requisitionId: r.id, institutionId: b.institutionId, institutionName: b.institutionName || '', status: r.status || 'CR', accountIds: [], connectedAt: nowIso(), seenTxIds: [] });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'bank.psd2.connect', { institution: b.institutionId });
+    return send(res, 200, { ok: true, link: r.link });
+  }
+  if (pathname === '/api/t/bank/psd2/status' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const st = loadPsd2(ctx.tenant.id);
+    if (!st) return send(res, 200, { connected: false });
+    if (psd2.isConfigured() && st.requisitionId && st.status !== 'LN') {
+      const tk = await psd2.getToken();
+      if (tk.ok) {
+        const rq = await psd2.getRequisition(st.requisitionId, tk.access);
+        if (rq.ok) {
+          st.status = rq.status; st.accountIds = rq.accounts || [];
+          // Konto-Details (IBAN) nachladen
+          st.accounts = [];
+          for (const aid of st.accountIds) { const d = await psd2.getAccountDetails(aid, tk.access); st.accounts.push({ id: aid, iban: d.ok ? d.iban : '', name: d.ok ? d.name : '' }); }
+          savePsd2(ctx.tenant.id, st);
+        }
+      }
+    }
+    return send(res, 200, { connected: st.status === 'LN', status: st.status, institutionName: st.institutionName, accounts: st.accounts || (st.accountIds || []).map(function (id) { return { id: id }; }), lastSync: st.lastSync || null });
+  }
+  if (pathname === '/api/t/bank/psd2/sync' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const st = loadPsd2(ctx.tenant.id);
+    if (!st || st.status !== 'LN') return send(res, 200, { ok: false, error: 'not-linked' });
+    const tk = await psd2.getToken(); if (!tk.ok) return send(res, 200, { ok: false, error: tk.error });
+    const seen = new Set(st.seenTxIds || []);
+    const dateFrom = st.lastSync ? st.lastSync.slice(0, 10) : undefined;
+    let fresh = [];
+    for (const aid of (st.accountIds || [])) {
+      const r = await psd2.getTransactions(aid, dateFrom, tk.access);
+      if (r.ok) r.transactions.forEach(function (t) { const key = t.txId || (t.date + '|' + t.amount + '|' + t.reference); if (!seen.has(key)) { seen.add(key); fresh.push(t); } });
+    }
+    st.seenTxIds = Array.from(seen).slice(-3000);
+    st.lastSync = nowIso();
+    savePsd2(ctx.tenant.id, st);
+    if (fresh.length) dbm.addInboxItem({ tenantId: ctx.tenant.id, kind: 'bank-tx', source: 'psd2', payload: { transactions: fresh } });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'bank.psd2.sync', { added: fresh.length });
+    return send(res, 200, { ok: true, added: fresh.length });
+  }
+  if (pathname === '/api/t/bank/psd2/disconnect' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    const st = loadPsd2(ctx.tenant.id);
+    if (st && st.requisitionId && psd2.isConfigured()) { const tk = await psd2.getToken(); if (tk.ok) await psd2.deleteRequisition(st.requisitionId, tk.access); }
+    dbm.setIntegration(ctx.tenant.id, 'bank_psd2', {}, null);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'bank.psd2.disconnect', {});
+    return send(res, 200, { ok: true });
+  }
+
   // ---- Wetter fürs Bautagebuch (open-meteo, live) ----
   const weatherReq = pathname.match(/^\/api\/t\/weather$/);
   if (weatherReq && m === 'GET') {
@@ -1222,6 +1301,16 @@ async function handleIntegrations(req, res, pathname, m) {
 }
 
 function safeParse(row) { try { return JSON.parse(row.config_json || '{}'); } catch (_e) { return {}; } }
+// PSD2-Status verschlüsselt lesen/schreiben (AES-256-GCM, pro Mandant gebunden)
+function loadPsd2(tenantId) {
+  const rec = dbm.getIntegration(tenantId, 'bank_psd2');
+  if (!rec) return null;
+  const c = safeParse(rec);
+  return c.enc ? secure.openJson(c.enc, 'psd2:' + tenantId) : null;
+}
+function savePsd2(tenantId, state) {
+  dbm.setIntegration(tenantId, 'bank_psd2', { enc: secure.sealJson(state, 'psd2:' + tenantId) });
+}
 function redact(cfgObj) {
   const c = Object.assign({}, cfgObj);
   for (const k of Object.keys(c)) if (/key|pass|secret|token/i.test(k) && c[k]) c[k] = '••••';

@@ -19,6 +19,9 @@ services:
       - WERKOS_SMTP_SECURE=${WERKOS_SMTP_SECURE:-}
       - WERKOS_INBOUND_SECRET=${WERKOS_INBOUND_SECRET:-}
       - WERKOS_SITE_DOMAIN=${WERKOS_SITE_DOMAIN:-}
+      - WERKOS_PSD2_SECRET_ID=${WERKOS_PSD2_SECRET_ID:-}
+      - WERKOS_PSD2_SECRET_KEY=${WERKOS_PSD2_SECRET_KEY:-}
+      - WERKOS_PSD2_BASE_URL=${WERKOS_PSD2_BASE_URL:-https://bankaccountdata.gocardless.com}
     volumes:
       - werkos-data:/data
     networks: [web]

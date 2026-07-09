@@ -113,4 +113,10 @@ module.exports = {
   INBOUND_WEBHOOK_SECRET: process.env.WERKOS_INBOUND_SECRET || '',
   // Öffentliche Basis-Domain für generierte Kunden-Websites (Website-Generator)
   SITE_BASE_DOMAIN: process.env.WERKOS_SITE_DOMAIN || '',
+
+  // ---- Sichere Bankanbindung (PSD2 / AIS über GoCardless Bank Account Data)
+  // Server-Zugangsdaten des lizenzierten Anbieters (NICHT die Bankdaten des Kunden).
+  PSD2_SECRET_ID: process.env.WERKOS_PSD2_SECRET_ID || '',
+  PSD2_SECRET_KEY: process.env.WERKOS_PSD2_SECRET_KEY || '',
+  PSD2_BASE_URL: process.env.WERKOS_PSD2_BASE_URL || 'https://bankaccountdata.gocardless.com',
 };
