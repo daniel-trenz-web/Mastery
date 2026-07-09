@@ -9,6 +9,7 @@ services:
     environment:
       - WERKOS_SECRET=${WERKOS_SECRET:?WERKOS_SECRET muss gesetzt sein (z.B. openssl rand -base64 48)}
       - WERKOS_ADMIN_TOKEN=${WERKOS_ADMIN_TOKEN:-}
+      - WERKOS_AI_KEY=${WERKOS_AI_KEY:-}
       - WERKOS_BASE_URL=${WERKOS_BASE_URL:-https://app.example.de}
     volumes:
       - werkos-data:/data

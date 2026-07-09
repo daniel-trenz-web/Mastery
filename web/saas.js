@@ -461,6 +461,15 @@
             (sub ? ' — Abo aktiv: ' + Number(sub.priceEur).toLocaleString('de-DE') + ' €/Monat (' + (sub.payMethod === 'sepa' ? 'SEPA' : 'auf Rechnung') + ')' : '')) + '</div>' +
           '<div class="wa-row">🧩 ' + esc(modNames.join(' · ') || 'keine Module') + '</div>' +
           '<div class="wa-row">🗄 ' + (a.storageBytes / 1048576).toFixed(1) + ' MB von ' + t.storageGb + ' GB belegt</div>';
+        // Laufende Zusatzmodul-Tests mit Countdown + Kauf-Aufforderung
+        var trials = (t.grants || []).filter(function (g) { return g.status === 'trial' && !g.inPlan; });
+        trials.forEach(function (g) {
+          var soon = g.daysLeft != null && g.daysLeft <= 3;
+          html += '<div class="wa-warn" style="' + (soon ? '' : 'background:#eef6ff;color:#1a3a5c;') + '">' +
+            '🧪 <b>' + esc(g.label) + '</b> — Test läuft noch ' + g.daysLeft + ' Tag' + (g.daysLeft === 1 ? '' : 'e') + '.' +
+            (isOwner ? ' <button class="wa-act primary" data-buy="' + esc(g.module) + '" style="margin-top:6px;">Für ' + g.addonPriceEur + ' €/Monat behalten</button>' : '') +
+            '</div>';
+        });
         if (t.trialExpired) html += '<div class="wa-warn">⚠ Testphase abgelaufen — bitte Tarif wählen, um weiterzuarbeiten. Deine Daten bleiben erhalten und exportierbar.</div>';
         if (t.status === 'deletion_pending') html += '<div class="wa-warn">⚠ Konto-Löschung beantragt. <button class="wa-act" id="waCancelDel">Löschung widerrufen</button></div>';
 
@@ -592,6 +601,23 @@
           card.onclick = function () {
             if (card.classList.contains('current')) return;
             showCheckout(card.dataset.plan);
+          };
+        });
+
+        // Zusatzmodul aus laufendem Test heraus kaufen
+        panel.querySelectorAll('[data-buy]').forEach(function (btn) {
+          btn.onclick = function () {
+            var key = btn.dataset.buy;
+            if (!confirm('Modul „' + key + '" dauerhaft behalten? Es wird kostenpflichtig zugebucht (auf Rechnung).')) return;
+            authed('POST', '/billing/buy-module', { module: key, acceptTerms: true }).then(function (r) {
+              if (r.status === 201) {
+                var s2 = getSession(); s2.tenant = Object.assign({}, s2.tenant, r.data.tenant); setSession(s2);
+                applyModules();
+                if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
+                toast('✓ ' + (r.data.hint || 'Modul gekauft.'));
+                renderPanel();
+              } else alert('Fehler: ' + ((r.data && r.data.error) || r.status));
+            });
           };
         });
 

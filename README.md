@@ -105,13 +105,36 @@ Bestandsschutz) und landet mit AGB-Nachweis im GoBD-Audit-Trail. Automatische
 Abbuchung (Stripe SEPA) dockt an `POST /api/billing/webhook` an — bis dahin:
 Kauf auf Rechnung (B2B-Standard).
 
+**Zusatzmodule als Add-ons mit befristeten Trials:** Jedes Modul lässt sich
+einzeln — zusätzlich zum Tarif — freischalten. Der Betreiber gewährt in der
+Admin-Zentrale pro Mandant ein **zeitlich begrenztes Gratis-Trial** eines
+Moduls (frei wählbare Tage). Läuft das Trial ab, schaltet sich das Modul
+**automatisch wieder ab** (rein über `expires_at` berechnet, kein Cron); der
+Betrieb sieht während des Tests einen Countdown im Konto-Widget und kann es mit
+einem Klick **dauerhaft kaufen** (`module_grants`, `POST /api/billing/buy-module`;
+Add-on-Preise in `config.MODULES[*].addonPriceEur`). Effektive Module =
+Tarif + aktive Grants + Host-Overrides.
+
 **Admin-Zentrale (`/admin`, Zugriff via `WERKOS_ADMIN_TOKEN`):** KPIs
-(Betriebe, zahlende Kunden, **MRR**, Trials, offene Angebote, Leads),
-Mandanten-Verwaltung (Tarif setzen, Module übersteuern, **Testphase
+(Betriebe, zahlende Kunden, **MRR** inkl. Add-ons, Trials, **aktive
+Modul-Tests**, offene Angebote, Leads), Mandanten-Verwaltung (Tarif setzen,
+Module übersteuern, **Modul-Trial gewähren/widerrufen**, **Testphase
 verlängern**, **sperren/entsperren** bei Zahlungsverzug — Lesen/Export bleibt),
 Mandanten-Detail (Nutzer, Abo inkl. Rechnungsadresse, letzte Aktivität),
 Vertriebs-Angebote (erstellen/widerrufen/Status) und Lead-Verwaltung
 (Consent-Nachweis, DSGVO-Löschung).
+
+## Einkauf & Lager: Materialkreislauf + Lieferschein-Foto
+
+- **Materialverbrauch auf Projekt buchen** (`bookLagerVerbrauch`): Menge wird
+  vom Lagerbestand abgezogen **und** als Ist-Materialkosten (EK) in die
+  Auftrags-Nachkalkulation geschrieben — fließt direkt in die Controlling-Ampel.
+- **Wareneingang per Foto** (`POST /api/t/ai/delivery-note`): Lieferschein
+  fotografieren → der zentrale KI-Dienst (`server/src/ai.js`, Claude Vision
+  hinter einer Abstraktionsschicht) liest Lieferant + Positionen strukturiert
+  aus → Nutzer prüft/korrigiert (Human-in-the-Loop) → Sammelbuchung erhöht den
+  Bestand. **Ohne KI-Key** (`WERKOS_AI_KEY`/`ANTHROPIC_API_KEY`) läuft alles im
+  manuellen Modus: Foto bleibt als Beleg, Mengen von Hand — kein Bruch.
 
 ## Angebots-Links (Kunde unterschreibt per Handy)
 

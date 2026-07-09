@@ -11,6 +11,7 @@
 const cfg = require('./config');
 const dbm = require('./db');
 const zip = require('./zip');
+const ai = require('./ai');
 const {
   id, nowIso, hashPassword, verifyPassword, signToken, opaqueToken,
   rateLimit, normEmail, isEmail, sha256,
@@ -41,11 +42,15 @@ function issueSession(user, tenant, req) {
   };
 }
 
-// Effektive Module = Tarif-Module + Host-Overrides (Betreiber kann pro Mandant
-// einzelne Module zusätzlich freischalten oder sperren).
+// Effektive Module = Tarif-Module + aktive Add-on-Grants (Trials/Käufe) +
+// Host-Overrides. Reihenfolge: Grants ergänzen, Overrides gewinnen zuletzt
+// (sperren/freischalten unabhängig von allem).
 function effectiveModules(tenant) {
   const plan = cfg.PLANS[tenant.plan];
   const set = new Set(plan ? plan.modules : []);
+  for (const g of dbm.activeGrants(tenant.id)) {
+    if (cfg.MODULES[g.module_key]) set.add(g.module_key);
+  }
   const overrides = (dbm.getTenantSettings(tenant.id).moduleOverrides) || {};
   for (const [k, v] of Object.entries(overrides)) {
     if (!cfg.MODULES[k]) continue;
@@ -55,6 +60,20 @@ function effectiveModules(tenant) {
 }
 
 function moduleAllowed(tenant, key) { return effectiveModules(tenant).includes(key); }
+
+// Aufbereitete Grant-Infos für die Anzeige (Trial-Countdown, Kauf-CTA)
+function grantInfo(tenant) {
+  const planModules = (cfg.PLANS[tenant.plan] || {}).modules || [];
+  return dbm.activeGrants(tenant.id).map((g) => ({
+    module: g.module_key,
+    label: (cfg.MODULES[g.module_key] || {}).label || g.module_key,
+    status: g.status,
+    expiresAt: g.expires_at,
+    daysLeft: g.expires_at ? Math.max(0, Math.ceil((new Date(g.expires_at).getTime() - Date.now()) / 864e5)) : null,
+    inPlan: planModules.includes(g.module_key),
+    addonPriceEur: (cfg.MODULES[g.module_key] || {}).addonPriceEur || null,
+  }));
+}
 
 function accountInfo(tenant) {
   const plan = cfg.PLANS[tenant.plan] || null;
@@ -66,6 +85,7 @@ function accountInfo(tenant) {
     planLabel: plan ? plan.label : tenant.plan,
     modules: effectiveModules(tenant),
     moduleCatalog: cfg.MODULES,
+    grants: grantInfo(tenant),
     priceEur: plan ? plan.priceEur : null,
     trialEndsAt: tenant.trial_ends_at,
     trialExpired: tenant.plan === 'TRIAL' && trialEnds > 0 && trialEnds < Date.now(),
@@ -322,6 +342,23 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, { ok: true, hint: 'Abo gekündigt. Lesen und Datenexport bleiben jederzeit möglich.' });
   }
 
+  // Add-on-Modul KAUFEN: aus einem laufenden Trial (oder direkt) wird ein
+  // dauerhafter Grant. Nur sinnvoll für Module, die NICHT schon im Tarif sind.
+  if (pathname === '/api/billing/buy-module' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner'])) return;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return;
+    const b = await readJson(req, 16e3);
+    const key = String(b.module || '');
+    const mod = cfg.MODULES[key];
+    if (!mod) return err(res, 400, 'invalid-module');
+    if ((cfg.PLANS[ctx.tenant.plan] || {}).modules.includes(key)) return err(res, 409, 'already-in-plan');
+    if (b.acceptTerms !== true) return err(res, 400, 'terms-required');
+    dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: key, status: 'active', priceEur: mod.addonPriceEur, createdBy: ctx.user.id, note: 'gekauft' });
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'module.purchased', { module: key, priceEur: mod.addonPriceEur, termsAccepted: true });
+    return send(res, 201, { ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), hint: mod.label + ' dauerhaft freigeschaltet (+' + mod.addonPriceEur + ' €/Monat, auf Rechnung).' });
+  }
+
   // Stripe-Webhook-Andockpunkt (Signaturprüfung folgt mit echten Stripe-Keys)
   if (pathname === '/api/billing/webhook' && m === 'POST') {
     await readBody(req, 1e6);
@@ -371,6 +408,21 @@ async function handleApi(req, res, pathname) {
     if (!f) return err(res, 404, 'not-found');
     // node:sqlite liefert BLOBs als Uint8Array — für send() in Buffer wandeln
     return send(res, 200, Buffer.from(f.data), { 'Content-Type': f.content_type || 'application/octet-stream', ETag: '"' + f.sha256 + '"' });
+  }
+
+  // KI liest einen fotografierten Lieferschein → strukturierte Positionen
+  // (Human-in-the-Loop: die App zeigt das Ergebnis zur Korrektur, bevor gebucht wird).
+  // Ohne KI-Key: { configured:false } → App fällt auf manuelle Erfassung zurück.
+  if (pathname === '/api/t/ai/delivery-note' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return;
+    if (!moduleAllowed(ctx.tenant, 'einkauf')) return err(res, 403, 'module-not-active', { module: 'einkauf' });
+    if (!ai.isConfigured()) return send(res, 200, { configured: false, hint: 'KI-Beleglesen ist nicht aktiviert — bitte Positionen manuell erfassen (Foto bleibt als Beleg gespeichert).' });
+    const buf = await readBody(req, cfg.MAX_AI_IMAGE_BYTES + 1024);
+    const ctype = req.headers['content-type'] || 'image/jpeg';
+    const result = await ai.extractDeliveryNote(buf, ctype.split(';')[0]);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'ai.delivery-note', { ok: !!result.ok, positions: result.data ? (result.data.positions || []).length : 0 });
+    return send(res, 200, result);
   }
 
   if (pathname === '/api/t/files' && m === 'GET') {
@@ -638,6 +690,7 @@ async function handleApi(req, res, pathname) {
         return Object.assign({}, t, {
           effective_modules: effectiveModules(t),
           module_overrides: dbm.getTenantSettings(t.id).moduleOverrides || {},
+          grants: grantInfo(t),
           subscription: sub ? { plan: sub.plan, price_eur: sub.price_eur, source: sub.source, since: sub.created_at, billing: JSON.parse(sub.billing_json || '{}') } : null,
           storage_bytes: dbm.tenantStorageBytes(t.id),
         });
@@ -711,6 +764,29 @@ async function handleApi(req, res, pathname) {
     }
     const soRevoke = pathname.match(/^\/api\/admin\/sales-offers\/([^/]+)\/revoke$/);
     if (soRevoke && m === 'POST') { dbm.revokeSalesOffer(soRevoke[1]); return send(res, 200, { ok: true }); }
+
+    // Modul-Trial gewähren (Host stellt Zusatzmodul für Zeitraum kostenlos frei)
+    const grMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/grant$/);
+    if (grMatch && m === 'POST') {
+      const b = await readJson(req, 16e3);
+      const t = dbm.getTenant(grMatch[1]);
+      if (!t) return err(res, 404, 'not-found');
+      if (!cfg.MODULES[b.module]) return err(res, 400, 'invalid-module');
+      const status = b.status === 'active' ? 'active' : 'trial';
+      const g = dbm.grantModule({
+        tenantId: t.id, moduleKey: b.module, status,
+        priceEur: status === 'active' ? cfg.MODULES[b.module].addonPriceEur : null,
+        days: b.days, createdBy: 'platform-admin', note: b.note || 'Host-Trial',
+      });
+      dbm.audit(t.id, 'platform-admin', 'module.granted', { module: b.module, status, days: b.days, expiresAt: g.expiresAt });
+      return send(res, 201, { ok: true, expiresAt: g.expiresAt, effective_modules: effectiveModules(dbm.getTenant(t.id)) });
+    }
+    const grRevoke = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/grant\/([^/]+)$/);
+    if (grRevoke && m === 'DELETE') {
+      dbm.revokeGrant(grRevoke[1], grRevoke[2]);
+      dbm.audit(grRevoke[1], 'platform-admin', 'module.grant-revoked', { module: grRevoke[2] });
+      return send(res, 200, { ok: true });
+    }
     // Host schaltet Module pro Mandant frei/sperrt sie (unabhängig vom Tarif)
     const modMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/modules$/);
     if (modMatch && m === 'POST') {

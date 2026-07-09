@@ -158,6 +158,24 @@ CREATE TABLE IF NOT EXISTS sales_offers (
 );
 CREATE INDEX IF NOT EXISTS salesoffer_token ON sales_offers(token_hash);
 
+-- Modul-Grants: einzelne Add-on-Module, die einem Mandanten zusätzlich zum Tarif
+-- gewährt sind. status = trial (läuft ab) oder active (gekauft, dauerhaft).
+-- Ein abgelaufener Trial schaltet das Modul automatisch wieder aus (rein über
+-- expires_at berechnet — kein Cron nötig).
+CREATE TABLE IF NOT EXISTS module_grants (
+  id          TEXT PRIMARY KEY,
+  tenant_id   TEXT NOT NULL REFERENCES tenants(id),
+  module_key  TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'trial',   -- trial | active
+  price_eur   REAL,                            -- bei Kauf: monatlicher Add-on-Preis
+  starts_at   TEXT NOT NULL,
+  expires_at  TEXT,                            -- NULL = dauerhaft (gekauft)
+  created_at  TEXT NOT NULL,
+  created_by  TEXT NOT NULL,
+  note        TEXT
+);
+CREATE INDEX IF NOT EXISTS grants_tenant ON module_grants(tenant_id, module_key);
+
 -- Demo-/Kontakt-Anfragen von der Website (Leads) — DSGVO: nur mit Consent,
 -- Zeitstempel + IP als Nachweis der Einwilligung (Art. 7 Abs. 1 DSGVO).
 CREATE TABLE IF NOT EXISTS leads (
@@ -329,11 +347,17 @@ function platformStats() {
   const trials = db.prepare("SELECT COUNT(*) AS n FROM tenants WHERE plan = 'TRIAL' AND status != 'deleted'").get().n;
   const paying = db.prepare(`SELECT COUNT(DISTINCT tenant_id) AS n FROM subscriptions s
     JOIN tenants tn ON tn.id = s.tenant_id WHERE s.status = 'active' AND tn.status != 'deleted'`).get().n;
-  const mrr = db.prepare(`SELECT COALESCE(SUM(s.price_eur),0) AS m FROM subscriptions s
+  const mrrSub = db.prepare(`SELECT COALESCE(SUM(s.price_eur),0) AS m FROM subscriptions s
     JOIN tenants tn ON tn.id = s.tenant_id WHERE s.status = 'active' AND tn.status != 'deleted'`).get().m;
+  // Gekaufte Add-on-Module (status active, dauerhaft) zählen zur MRR dazu
+  const mrrAddon = db.prepare(`SELECT COALESCE(SUM(g.price_eur),0) AS m FROM module_grants g
+    JOIN tenants tn ON tn.id = g.tenant_id
+    WHERE g.status = 'active' AND g.expires_at IS NULL AND tn.status != 'deleted'`).get().m;
+  const mrr = mrrSub + mrrAddon;
+  const trialsMod = db.prepare("SELECT COUNT(*) AS n FROM module_grants WHERE status = 'trial' AND (expires_at IS NULL OR expires_at > ?)").get(nowIso()).n;
   const leads = db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
   const offersOpen = db.prepare("SELECT COUNT(*) AS n FROM sales_offers WHERE status = 'open'").get().n;
-  return { tenants: t, trials, paying, mrrEur: mrr, leads, salesOffersOpen: offersOpen };
+  return { tenants: t, trials, paying, mrrEur: mrr, leads, salesOffersOpen: offersOpen, moduleTrials: trialsMod };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +382,37 @@ function acceptSalesOffer(oid, tenantId) {
 }
 function revokeSalesOffer(oid) {
   db.prepare("UPDATE sales_offers SET status = 'revoked' WHERE id = ? AND status = 'open'").run(oid);
+}
+
+// ---------------------------------------------------------------------------
+// Modul-Grants (Add-on-Module: Trials + Käufe)
+// ---------------------------------------------------------------------------
+function grantModule({ tenantId, moduleKey, status, priceEur, days, createdBy, note }) {
+  // Bestehenden Grant desselben Moduls ersetzen (nur EIN aktiver je Modul)
+  db.prepare('DELETE FROM module_grants WHERE tenant_id = ? AND module_key = ?').run(tenantId, moduleKey);
+  const gid = id('gr');
+  const now = nowIso();
+  const expiresAt = status === 'active' ? null
+    : new Date(Date.now() + Math.min(Math.max(Number(days) || 14, 1), 365) * 864e5).toISOString();
+  db.prepare(`INSERT INTO module_grants (id, tenant_id, module_key, status, price_eur, starts_at, expires_at, created_at, created_by, note)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(gid, tenantId, moduleKey, status || 'trial', priceEur != null ? priceEur : null, now, expiresAt, now, createdBy || 'system', note || null);
+  return { id: gid, expiresAt };
+}
+// Aktive (nicht abgelaufene) Grants eines Mandanten — inkl. Rest-Tage bei Trials.
+function activeGrants(tenantId) {
+  const now = Date.now();
+  return db.prepare('SELECT * FROM module_grants WHERE tenant_id = ?').all(tenantId)
+    .filter((g) => !g.expires_at || new Date(g.expires_at).getTime() > now);
+}
+function allGrants(tenantId) {
+  return db.prepare('SELECT * FROM module_grants WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
+}
+function getGrant(tenantId, moduleKey) {
+  return db.prepare('SELECT * FROM module_grants WHERE tenant_id = ? AND module_key = ?').get(tenantId, moduleKey) || null;
+}
+function revokeGrant(tenantId, moduleKey) {
+  db.prepare('DELETE FROM module_grants WHERE tenant_id = ? AND module_key = ?').run(tenantId, moduleKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +529,7 @@ function purgeTenant(tenantId) {
   db.exec('BEGIN');
   try {
     tx('DELETE FROM leads WHERE tenant_id = ?').run(tenantId); // DSGVO: Lead-Daten mitlöschen
+    tx('DELETE FROM module_grants WHERE tenant_id = ?').run(tenantId);
     tx('DELETE FROM subscriptions WHERE tenant_id = ?').run(tenantId);
     tx("UPDATE sales_offers SET company = '[gelöscht]', contact_name = NULL, email = '[gelöscht]', phone = NULL WHERE tenant_id = ?").run(tenantId);
     tx('DELETE FROM offer_links WHERE tenant_id = ?').run(tenantId);
@@ -500,6 +556,7 @@ module.exports = {
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
   getTenantSettings, setTenantModuleOverrides,
   createLead, listLeads, deleteLead,
+  grantModule, activeGrants, allGrants, getGrant, revokeGrant,
   createSubscription, getActiveSubscription, cancelSubscription, platformStats,
   createSalesOffer, findSalesOfferByToken, listSalesOffers, acceptSalesOffer, revokeSalesOffer,
   createOfferLink, findOfferLinkByToken, getOfferLink, listOfferLinks,

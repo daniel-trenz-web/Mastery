@@ -699,6 +699,88 @@ test('SALES: Vertriebs-Angebot mit Sonderpreis → Online-Abschluss → aktiver 
   assert.equal(gone.status, 404);
 });
 
+// ---------------------------------------------------------------------------
+test('MODUL-TRIALS: Host gewährt Add-on-Test, läuft ab, ist kaufbar', async () => {
+  const s = await register('Trial-Modul GmbH', 'trialmod@test.de');
+  const A = { headers: { 'X-Admin-Token': 'test-admin-token' } };
+  await checkout(s.accessToken, 'START'); // nur 'zeiten'
+
+  let acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
+
+  // Host gewährt einkauf als 7-Tage-Trial
+  const gr = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/grant', { ...A, body: { module: 'einkauf', days: 7 } });
+  assert.equal(gr.status, 201);
+  assert.ok(gr.data.effective_modules.includes('einkauf'));
+
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules.sort(), ['einkauf', 'zeiten']);
+  const grant = acc.data.tenant.grants.find((g) => g.module === 'einkauf');
+  assert.equal(grant.status, 'trial');
+  assert.ok(grant.daysLeft >= 6 && grant.daysLeft <= 7);
+  assert.equal(grant.inPlan, false);
+  assert.equal(grant.addonPriceEur, 10);
+
+  // Ungültiges Modul abgelehnt
+  const bad = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/grant', { ...A, body: { module: 'quatsch', days: 5 } });
+  assert.equal(bad.status, 400);
+
+  // Trial abgelaufen → Modul automatisch weg (rein über expires_at)
+  dbm.db.prepare("UPDATE module_grants SET expires_at = '2000-01-01T00:00:00Z' WHERE tenant_id = ? AND module_key = 'einkauf'").run(s.tenant.id);
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules, ['zeiten'], 'abgelaufener Trial fällt automatisch weg');
+
+  // Neuer Trial, diesmal kaufen → dauerhaft aktiv
+  await api('POST', '/api/admin/tenants/' + s.tenant.id + '/grant', { ...A, body: { module: 'einkauf', days: 3 } });
+  const buy = await api('POST', '/api/billing/buy-module', { token: s.accessToken, body: { module: 'einkauf', acceptTerms: true } });
+  assert.equal(buy.status, 201, JSON.stringify(buy.data));
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  const bought = acc.data.tenant.grants.find((g) => g.module === 'einkauf');
+  assert.equal(bought.status, 'active');
+  assert.equal(bought.daysLeft, null, 'gekauft = kein Ablauf');
+
+  // Kauf ohne AGB abgelehnt; Kauf eines Tarif-Moduls abgelehnt
+  const noTerms = await api('POST', '/api/billing/buy-module', { token: s.accessToken, body: { module: 'planung' } });
+  assert.equal(noTerms.status, 400);
+  const inPlan = await api('POST', '/api/billing/buy-module', { token: s.accessToken, body: { module: 'zeiten', acceptTerms: true } });
+  assert.equal(inPlan.status, 409);
+
+  // MRR = START 15 + Add-on einkauf 10 = 25
+  const ov = await api('GET', '/api/admin/overview', A);
+  assert.ok(ov.data.stats.mrrEur >= 25);
+
+  // Host widerruft den gekauften Grant → Modul weg
+  const rev = await api('DELETE', '/api/admin/tenants/' + s.tenant.id + '/grant/einkauf', A);
+  assert.equal(rev.status, 200);
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
+
+  // Isolation: anderer Mandant hat keine Grants
+  const other = await register('Ohne-Grant GmbH', 'nogrant@test.de');
+  const oacc = await api('GET', '/api/account', { token: other.accessToken });
+  assert.equal((oacc.data.tenant.grants || []).length, 0);
+});
+
+test('KI-Lieferschein: ohne Key sauberer Fallback, Modul-Gate greift', async () => {
+  const s = await register('KI-Beleg GmbH', 'kibeleg@test.de');
+  const A = { headers: { 'X-Admin-Token': 'test-admin-token' } };
+  // Kleines gültiges JPEG-Byte-Muster
+  const img = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1]);
+
+  // START-Tarif hat kein einkauf → Modul-Gate blockt
+  await checkout(s.accessToken, 'START');
+  const blocked = await api('POST', '/api/t/ai/delivery-note', { token: s.accessToken, raw: img, headers: { 'Content-Type': 'image/jpeg' } });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.data.error, 'module-not-active');
+
+  // einkauf freischalten → Endpoint erreichbar, ohne KI-Key: configured:false (Fallback)
+  await api('POST', '/api/admin/tenants/' + s.tenant.id + '/grant', { ...A, body: { module: 'einkauf', days: 7 } });
+  const r = await api('POST', '/api/t/ai/delivery-note', { token: s.accessToken, raw: img, headers: { 'Content-Type': 'image/jpeg' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.configured, false);
+  assert.ok(r.data.hint.includes('manuell'));
+});
+
 test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async () => {
   // / ist jetzt die Marketing-Website
   const site = await fetch(BASE + '/');

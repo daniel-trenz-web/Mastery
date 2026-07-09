@@ -50,12 +50,14 @@ module.exports = {
   // Modul-Katalog — bewusst schlank: 5 Module, die je einen Kaufgrund haben.
   // appModules = welche Funktionsbereiche der PWA das WERKOS-Modul freischaltet
   // (die PWA blendet Tabs über state.modules[key] ein/aus).
+  // addonPriceEur = Preis, wenn das Modul EINZELN als Add-on zugebucht wird
+  // (zusätzlich zum Tarif). Module lassen sich damit unabhängig testen & kaufen.
   MODULES: {
-    zeiten:    { label: 'Zeiten & Team',         desc: 'Mitarbeiter, Stundenzettel, Kolonnen, Auswertungen', appModules: ['employees', 'kolonnen', 'tickets', 'wochen'] },
-    auftraege: { label: 'Aufträge & Baustelle',  desc: 'Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit', appModules: ['reports', 'maengel', 'lv', 'cockpit'] },
-    geld:      { label: 'Angebote & Rechnungen', desc: 'Angebote mit Kunden-Link & Unterschrift, Rechnungen, Mahnwesen', appModules: ['angebote', 'rechnungen'] },
-    planung:   { label: 'Einsatzplanung',        desc: 'Kalender, Mitarbeiter & Aufträge per Drag & Drop planen', appModules: ['calendar'] },
-    einkauf:   { label: 'Einkauf & Lager',       desc: 'Lieferanten, Bestellungen, Eingangsrechnungen, Lager', appModules: ['einkauf'] },
+    zeiten:    { label: 'Zeiten & Team',         desc: 'Mitarbeiter, Stundenzettel, Kolonnen, Auswertungen', appModules: ['employees', 'kolonnen', 'tickets', 'wochen'], addonPriceEur: 15 },
+    auftraege: { label: 'Aufträge & Baustelle',  desc: 'Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit', appModules: ['reports', 'maengel', 'lv', 'cockpit'], addonPriceEur: 12 },
+    geld:      { label: 'Angebote & Rechnungen', desc: 'Angebote mit Kunden-Link & Unterschrift, Rechnungen, Mahnwesen', appModules: ['angebote', 'rechnungen'], addonPriceEur: 12 },
+    planung:   { label: 'Einsatzplanung',        desc: 'Kalender, Mitarbeiter & Aufträge per Drag & Drop planen', appModules: ['calendar'], addonPriceEur: 8 },
+    einkauf:   { label: 'Einkauf & Lager',       desc: 'Lieferanten, Bestellungen, Wareneingang per Foto, Lager & Materialbuchung', appModules: ['einkauf'], addonPriceEur: 10 },
   },
 
   // Tarife — ein Preis pro Betrieb, niemals pro Nutzer (Produktregel Nr. 6).
@@ -68,6 +70,14 @@ module.exports = {
     BETRIEB_PLUS: { label: 'BETRIEB PLUS', priceEur: 59, maxEmployees: 15, storageGb: 25, modules: ['zeiten', 'auftraege', 'geld', 'planung', 'einkauf'] },
   },
   TRIAL_DAYS: 14,
+
+  // KI-Dienst (der "unsichtbare Mitarbeiter"): Abstraktionsschicht über die
+  // Claude-API. Ohne API-Key läuft alles im manuellen Modus (Foto als Beleg,
+  // Mengen von Hand) — mit Key liest die KI Lieferscheine/Belege strukturiert.
+  AI_API_KEY: process.env.WERKOS_AI_KEY || process.env.ANTHROPIC_API_KEY || '',
+  AI_MODEL: process.env.WERKOS_AI_MODEL || 'claude-sonnet-5',
+  AI_BASE_URL: process.env.WERKOS_AI_BASE_URL || 'https://api.anthropic.com',
+  MAX_AI_IMAGE_BYTES: 8 * 1024 * 1024,
 
   // Angebots-Links (Kunde nimmt per Unterschrift an)
   OFFER_LINK_DAYS: 30,             // Standard-Gültigkeit
