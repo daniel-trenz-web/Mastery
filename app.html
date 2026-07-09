@@ -8631,6 +8631,7 @@
   // V6.3: Modul-System — User kann einzelne Funktionsbereiche ein-/ausschalten
   const MODULE_CONFIG = [
     { key: 'angebote',    icon: '📨', label: 'Angebote',                desc: 'Angebote erstellen, kalkulieren und als PDF exportieren', tabs: ['angebote'] },
+    { key: 'aufmass',     icon: '📐', label: 'Aufmaß & Raumplan',        desc: 'Digitales Raum-Aufmaß mit 2D-Grundriss, 3D-Vorschau und Mengen (Boden/Wand/Decke)', tabs: ['aufmass'] },
     { key: 'calendar',    icon: '📅', label: 'Kalender / Einsatzplanung', desc: 'Mitarbeiter und Aufträge per Drag&Drop planen, Urlaube/Abwesenheiten erfassen', tabs: ['calendar'] },
     { key: 'reports',     icon: '📋', label: 'Berichte / Bautagebuch',   desc: 'Bauberichte, Tagesberichte, Bautagebuch, eigene Berichts-Vorlagen', tabs: ['reports', 'forms'] },
     { key: 'maengel',     icon: '⚠',  label: 'Mängel-Verwaltung',         desc: 'Mängel erfassen, zuordnen, Status, Fotos und Fristen', tabs: ['maengel'] },
@@ -8667,6 +8668,7 @@
     ]},
     { label: 'Projekte & Kunden', items: [
       { tab: 'angebote', icon: '📨', label: 'Angebote' },
+      { tab: 'aufmass',  icon: '📐', label: 'Aufmaß' },
       { tab: 'projects', icon: '📁', label: 'Projekte' },
       { tab: 'kunden',   icon: '🏢', label: 'Kunden & WE' },
       { tab: 'archiv',   icon: '🗃', label: 'Archiv' },
@@ -9069,6 +9071,7 @@
       else if (currentTab === 'wochen') renderWochenTab();
       else if (currentTab === 'cockpit') renderControllingCockpit();
       else if (currentTab === 'angebote') renderAngeboteTab();
+      else if (currentTab === 'aufmass') renderAufmassTab();
       else if (currentTab === 'maengel') renderMaengelOverview();
       else if (currentTab === 'tickets') renderTicketsTab();
       else if (currentTab === 'subcontractors') renderSubcontractorsTab();
@@ -9158,6 +9161,7 @@
       if (currentTab === 'wochen') return renderWochenTab();
       if (currentTab === 'cockpit') return renderControllingCockpit();
       if (currentTab === 'angebote') return renderAngeboteTab();
+      if (currentTab === 'aufmass') return renderAufmassTab();
       if (currentTab === 'maengel') return renderMaengelOverview();
       if (currentTab === 'subcontractors') return renderSubcontractorsTab();
       if (currentTab === 'invoices') { currentTab = 'einkauf'; return renderEinkaufLagerTab(); }
@@ -55462,6 +55466,402 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       setTimeout(_autoRestore, 1000);
     }
   })();
+</script>
+
+<!-- ============================================================
+     AUFMASS & RAUMPLAN — digitales Raum-Aufmaß (Modul 'aufmass')
+     2D-Grundriss + 3D-Vorschau (Canvas, ohne externe Libs),
+     Mengen (Boden/Wand/Decke/Umfang/Volumen), Übernahme ins Angebot.
+     Echtes LiDAR-Scannen ist im Browser nicht möglich (nur native iOS/
+     ARKit); AR-Messen per WebXR wird best-effort angeboten, wo unterstützt.
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+  function S() { return window.state; }
+  function esc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s); }
+  function num(n, d) { return (typeof fmtNum === 'function') ? fmtNum(n, d == null ? 2 : d) : (Math.round((Number(n) || 0) * 100) / 100).toString(); }
+  function toast(m) { if (typeof mToast === 'function') mToast(m); }
+
+  // Eigener State-Key: state.aufmasse gehört dem Alt-Kalkulator (LV-Mengen).
+  // Dieses Raum-Modul speichert getrennt unter state.raumaufmasse.
+  function ensure() {
+    var st = S(); if (!st) return [];
+    if (!Array.isArray(st.raumaufmasse)) st.raumaufmasse = [];
+    return st.raumaufmasse;
+  }
+
+  // ---- Geometrie: Turtle (Wände mit Länge + Abbiegewinkel) → Eckpunkte ----
+  function roomPoints(room) {
+    var pts = [], x = 0, y = 0, h = 0; // h in Grad, 0 = +x
+    (room.walls || []).forEach(function (w) {
+      pts.push({ x: x, y: y });
+      var r = h * Math.PI / 180;
+      x += Math.cos(r) * (Number(w.len) || 0);
+      y += Math.sin(r) * (Number(w.len) || 0);
+      h -= (w.turn == null ? 90 : Number(w.turn)); // rechts = positiv
+    });
+    return pts;
+  }
+  function polyArea(pts) {
+    var a = 0;
+    for (var i = 0; i < pts.length; i++) {
+      var j = (i + 1) % pts.length;
+      a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    return Math.abs(a) / 2;
+  }
+  function roomMetrics(room) {
+    var pts = roomPoints(room);
+    var floor = polyArea(pts);
+    var perimeter = (room.walls || []).reduce(function (s, w) { return s + (Number(w.len) || 0); }, 0);
+    var height = Number(room.height) || 0;
+    var wallGross = perimeter * height;
+    var openings = (room.openings || []).reduce(function (s, o) { return s + (Number(o.w) || 0) * (Number(o.h) || 0) * (Number(o.count) || 1); }, 0);
+    var wallNet = Math.max(0, wallGross - openings);
+    return { pts: pts, floor: floor, perimeter: perimeter, height: height, wallGross: wallGross, openings: openings, wallNet: wallNet, ceiling: floor, volume: floor * height };
+  }
+  function totals(auf) {
+    var t = { floor: 0, wallNet: 0, ceiling: 0, perimeter: 0, volume: 0, rooms: (auf.rooms || []).length };
+    (auf.rooms || []).forEach(function (r) {
+      var m = roomMetrics(r);
+      t.floor += m.floor; t.wallNet += m.wallNet; t.ceiling += m.ceiling; t.perimeter += m.perimeter; t.volume += m.volume;
+    });
+    return t;
+  }
+  window._afRoomMetrics = roomMetrics; // für Tests
+
+  // ---- 2D-Grundriss zeichnen ----
+  function draw2D(canvas, room) {
+    var m = roomMetrics(room), pts = m.pts;
+    var ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#f7fafc'; ctx.fillRect(0, 0, W, H);
+    if (pts.length < 2) return;
+    var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    var pad = 34, sw = (maxX - minX) || 1, sh = (maxY - minY) || 1;
+    var sc = Math.min((W - 2 * pad) / sw, (H - 2 * pad) / sh);
+    function px(p) { return { x: pad + (p.x - minX) * sc, y: pad + (p.y - minY) * sc }; }
+    // Boden
+    ctx.beginPath();
+    pts.forEach(function (p, i) { var q = px(p); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
+    ctx.closePath(); ctx.fillStyle = 'rgba(63,207,127,0.12)'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#16324e'; ctx.stroke();
+    // Wandmaße
+    ctx.fillStyle = '#1a3a5c'; ctx.font = '12px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.textAlign = 'center';
+    (room.walls || []).forEach(function (w, i) {
+      var a = px(pts[i]), b = px(pts[(i + 1) % pts.length]);
+      ctx.fillText(num(w.len, 2) + ' m', (a.x + b.x) / 2, (a.y + b.y) / 2 - 4);
+    });
+    // Fläche mittig
+    var cx = pts.reduce(function (s, p) { return s + px(p).x; }, 0) / pts.length;
+    var cy = pts.reduce(function (s, p) { return s + px(p).y; }, 0) / pts.length;
+    ctx.font = 'bold 14px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.fillStyle = '#1e8449';
+    ctx.fillText(num(m.floor, 2) + ' m²', cx, cy);
+  }
+
+  // ---- 3D-Vorschau (isometrisch, extrudierte Wände) ----
+  function draw3D(canvas, room) {
+    var m = roomMetrics(room), pts = m.pts, hgt = m.height || 2.5;
+    var ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#eef3f8'; ctx.fillRect(0, 0, W, H);
+    if (pts.length < 3) return;
+    var cos = Math.cos(Math.PI / 6), sin = Math.sin(Math.PI / 6);
+    function iso(x, y, z) { return { x: (x - y) * cos, y: (x + y) * sin - z }; }
+    // Bounding box im ISO-Raum (inkl. Höhe)
+    var all = [];
+    pts.forEach(function (p) { all.push(iso(p.x, p.y, 0)); all.push(iso(p.x, p.y, hgt)); });
+    var xs = all.map(function (p) { return p.x; }), ys = all.map(function (p) { return p.y; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    var pad = 24, sc = Math.min((W - 2 * pad) / ((maxX - minX) || 1), (H - 2 * pad) / ((maxY - minY) || 1));
+    function sp(x, y, z) { var p = iso(x, y, z); return { x: pad + (p.x - minX) * sc, y: pad + (p.y - minY) * sc }; }
+    // Boden
+    ctx.beginPath();
+    pts.forEach(function (p, i) { var q = sp(p.x, p.y, 0); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
+    ctx.closePath(); ctx.fillStyle = 'rgba(26,58,92,0.10)'; ctx.fill(); ctx.strokeStyle = '#9db4c9'; ctx.lineWidth = 1; ctx.stroke();
+    // Wände (hinten zuerst) — nach mittlerer Tiefe sortieren
+    var edges = [];
+    for (var i = 0; i < pts.length; i++) {
+      var a = pts[i], b = pts[(i + 1) % pts.length];
+      edges.push({ a: a, b: b, depth: (a.x + a.y + b.x + b.y) / 4 });
+    }
+    edges.sort(function (e1, e2) { return e1.depth - e2.depth; });
+    edges.forEach(function (e) {
+      var p1 = sp(e.a.x, e.a.y, 0), p2 = sp(e.b.x, e.b.y, 0), p3 = sp(e.b.x, e.b.y, hgt), p4 = sp(e.a.x, e.a.y, hgt);
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath();
+      ctx.fillStyle = 'rgba(42,80,128,' + (0.28 + 0.22 * ((e.depth - minX) / ((maxX - minX) || 1))) + ')';
+      ctx.fill(); ctx.strokeStyle = '#16324e'; ctx.lineWidth = 1.2; ctx.stroke();
+    });
+  }
+
+  function drawRoomCanvases(room) {
+    setTimeout(function () {
+      var c2 = document.getElementById('af2d_' + room.id); if (c2) { try { draw2D(c2, room); } catch (e) {} }
+      var c3 = document.getElementById('af3d_' + room.id); if (c3) { try { draw3D(c3, room); } catch (e) {} }
+    }, 30);
+  }
+
+  // ---- Übersicht: Liste der Aufmaße ----
+  window.renderAufmassTab = function () {
+    var main = document.getElementById('mainContent'); if (!main) return;
+    var list = ensure().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var guest = (typeof isGuest === 'function' && isGuest());
+    var html = '<h2 style="margin-bottom:6px;">📐 Aufmaß &amp; Raumplan</h2>' +
+      '<div class="help">Raum für Raum digital aufmessen: Maße eingeben, werkflow berechnet Boden-, Wand- und Deckenflächen und zeigt Grundriss + 3D-Vorschau. Die Mengen lassen sich direkt ins Angebot übernehmen.</div>' +
+      '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#8a6d1a;margin:10px 0;">ℹ️ <b>LiDAR-Hinweis:</b> Echtes LiDAR-Raumscannen (wie magicplan) benötigt eine native iOS-App und ist im Browser technisch nicht möglich. Dieses Modul erfasst das Aufmaß digital per Eingabe (Rechteck-Schnellerfassung oder Wand-für-Wand). Auf unterstützten Android-Geräten kannst du zusätzlich per <b>AR-Messen (Beta)</b> Strecken abgreifen.</div>';
+    if (!guest) html += '<button class="success" onclick="afNewAufmass()">+ Neues Aufmaß</button>';
+    html += '<div style="margin-top:14px;">';
+    if (!list.length) html += '<div style="padding:26px;text-align:center;color:#889;">Noch kein Aufmaß angelegt.</div>';
+    list.forEach(function (a) {
+      var t = totals(a);
+      html += '<div class="card" style="cursor:pointer;padding:14px;margin-bottom:8px;" onclick="afOpen(\'' + a.id + '\')">' +
+        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+        '<div><b style="font-size:15px;">' + esc(a.name) + '</b>' + (a.kundeName ? ' <span style="color:#789;">· ' + esc(a.kundeName) + '</span>' : '') + '<br>' +
+        '<span style="color:#789;font-size:12px;">' + t.rooms + ' Raum/Räume · Boden ' + num(t.floor, 1) + ' m² · Wand ' + num(t.wallNet, 1) + ' m²</span></div>' +
+        '<div style="color:#1e8449;font-weight:700;font-size:15px;">' + num(t.floor, 1) + ' m²</div>' +
+        '</div></div>';
+    });
+    html += '</div>';
+    main.innerHTML = html;
+  };
+
+  window.afNewAufmass = function () {
+    var kunden = (S().kunden || []).slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    var opts = '<option value="">— optional —</option>' + kunden.map(function (k) { return '<option value="' + k.id + '">' + esc(k.name) + '</option>'; }).join('');
+    showModal('<h2>📐 Neues Aufmaß</h2>' +
+      '<label>Bezeichnung *</label><input id="afName" placeholder="z. B. Wohnung Müller, EG">' +
+      '<label>Kunde (optional)</label><select id="afKunde">' + opts + '</select>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
+      '<button class="success" onclick="afCreate()">Anlegen</button></div>');
+  };
+  window.afCreate = function () {
+    var name = (document.getElementById('afName').value || '').trim();
+    if (!name) { alert('Bitte Bezeichnung eingeben.'); return; }
+    var kSel = document.getElementById('afKunde'); var kId = kSel.value || '';
+    var kName = kId ? (S().kunden.find(function (k) { return k.id === kId; }) || {}).name || '' : '';
+    var a = { id: (typeof uid === 'function' ? uid('af') : 'af_' + Date.now()), name: name, kundeId: kId, kundeName: kName, rooms: [], createdAt: Date.now() };
+    ensure().push(a);
+    if (typeof saveState === 'function') saveState();
+    if (typeof closeModal === 'function') closeModal();
+    afOpen(a.id);
+  };
+  window.afDelete = function (id) {
+    if (!confirm('Aufmaß wirklich löschen?')) return;
+    S().raumaufmasse = ensure().filter(function (a) { return a.id !== id; });
+    if (typeof saveState === 'function') saveState();
+    renderAufmassTab();
+  };
+
+  function getAuf(id) { return ensure().find(function (a) { return a.id === id; }); }
+
+  // ---- Detail: Räume + Mengen + Canvas ----
+  window.afOpen = function (id) {
+    var a = getAuf(id); if (!a) return renderAufmassTab();
+    var main = document.getElementById('mainContent'); if (!main) return;
+    var t = totals(a);
+    var guest = (typeof isGuest === 'function' && isGuest());
+    var canAngebot = (typeof openAngebotDetail === 'function') && (typeof isModuleEnabled !== 'function' || isModuleEnabled('angebote'));
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+      '<h2>📐 ' + esc(a.name) + (a.kundeName ? ' <span style="color:#789;font-weight:400;font-size:15px;">· ' + esc(a.kundeName) + '</span>' : '') + '</h2>' +
+      '<button class="secondary small" onclick="switchTab(\'aufmass\')">← Übersicht</button></div>';
+    // Gesamt-Mengen
+    html += '<div class="kpi-strip" style="margin:8px 0 14px;">' +
+      afKpi('🟩 Bodenfläche', num(t.floor, 2) + ' m²') +
+      afKpi('🧱 Wandfläche (netto)', num(t.wallNet, 2) + ' m²') +
+      afKpi('⬜ Deckenfläche', num(t.ceiling, 2) + ' m²') +
+      afKpi('📦 Volumen', num(t.volume, 2) + ' m³') + '</div>';
+    if (!guest) html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<button class="success" onclick="afAddRect(\'' + a.id + '\')">+ Raum (Rechteck)</button>' +
+      '<button class="secondary" onclick="afAddCustom(\'' + a.id + '\')">+ Raum (Wände einzeln)</button>' +
+      '<button class="secondary" onclick="afStartAR(\'' + a.id + '\')">📱 AR-Messen (Beta)</button>' +
+      (canAngebot ? '<button class="primary-action" style="background:#1a3a5c;color:#fff;border:none;padding:7px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="afToAngebot(\'' + a.id + '\')">📨 In Angebot übernehmen</button>' : '') +
+      '<span style="flex:1;"></span><button class="danger small" onclick="afDelete(\'' + a.id + '\')">Aufmaß löschen</button></div>';
+    // Räume
+    if (!(a.rooms || []).length) html += '<div style="padding:20px;text-align:center;color:#889;">Noch kein Raum — füge oben einen Raum hinzu.</div>';
+    (a.rooms || []).forEach(function (room) {
+      var m = roomMetrics(room);
+      html += '<div class="card" style="padding:14px;margin-bottom:12px;">' +
+        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;">' +
+        '<b style="font-size:15px;">🚪 ' + esc(room.name) + '</b>' +
+        (guest ? '' : '<div style="display:flex;gap:6px;"><button class="secondary small" onclick="afEditRoom(\'' + a.id + '\',\'' + room.id + '\')">✎ Maße</button>' +
+          '<button class="danger small" onclick="afDelRoom(\'' + a.id + '\',\'' + room.id + '\')">✕</button></div>') + '</div>' +
+        '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">' +
+        '<canvas id="af2d_' + room.id + '" width="340" height="230" style="background:#f7fafc;border:1px solid #e3e9ef;border-radius:8px;max-width:100%;"></canvas>' +
+        '<canvas id="af3d_' + room.id + '" width="340" height="230" style="background:#eef3f8;border:1px solid #e3e9ef;border-radius:8px;max-width:100%;"></canvas>' +
+        '<div style="min-width:190px;font-size:13px;">' +
+        afRow('Höhe', num(m.height, 2) + ' m') + afRow('Umfang', num(m.perimeter, 2) + ' m') +
+        afRow('Bodenfläche', num(m.floor, 2) + ' m²') + afRow('Wand brutto', num(m.wallGross, 2) + ' m²') +
+        afRow('− Öffnungen', num(m.openings, 2) + ' m²') + afRow('<b>Wand netto</b>', '<b>' + num(m.wallNet, 2) + ' m²</b>') +
+        afRow('Decke', num(m.ceiling, 2) + ' m²') + afRow('Volumen', num(m.volume, 2) + ' m³') +
+        '</div></div></div>';
+    });
+    main.innerHTML = html;
+    (a.rooms || []).forEach(drawRoomCanvases);
+  };
+  function afKpi(l, v) { return '<div class="kpi-card accent-success"><div class="label">' + l + '</div><div class="value">' + v + '</div></div>'; }
+  function afRow(l, v) { return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f0f2f5;"><span style="color:#667;">' + l + '</span><span>' + v + '</span></div>'; }
+
+  // ---- Raum anlegen: Rechteck-Schnellerfassung ----
+  window.afAddRect = function (aufId) {
+    showModal('<h2>+ Raum (Rechteck)</h2>' +
+      '<label>Raumname *</label><input id="rName" placeholder="z. B. Wohnzimmer">' +
+      '<div class="row3"><div><label>Länge (m) *</label><input type="number" id="rL" step="0.01" min="0" value="4.00"></div>' +
+      '<div><label>Breite (m) *</label><input type="number" id="rB" step="0.01" min="0" value="3.00"></div>' +
+      '<div><label>Höhe (m) *</label><input type="number" id="rH" step="0.01" min="0" value="2.50"></div></div>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
+      '<button class="success" onclick="afCreateRect(\'' + aufId + '\')">Anlegen</button></div>');
+  };
+  window.afCreateRect = function (aufId) {
+    var a = getAuf(aufId); if (!a) return;
+    var name = (document.getElementById('rName').value || '').trim() || 'Raum';
+    var L = Number(document.getElementById('rL').value) || 0, B = Number(document.getElementById('rB').value) || 0, Hh = Number(document.getElementById('rH').value) || 0;
+    if (L <= 0 || B <= 0) { alert('Länge und Breite müssen > 0 sein.'); return; }
+    a.rooms = a.rooms || [];
+    a.rooms.push({ id: (typeof uid === 'function' ? uid('rm') : 'rm_' + Date.now()), name: name, height: Hh, rect: { L: L, B: B },
+      walls: [{ len: L, turn: 90 }, { len: B, turn: 90 }, { len: L, turn: 90 }, { len: B, turn: 90 }], openings: [] });
+    if (typeof saveState === 'function') saveState();
+    if (typeof closeModal === 'function') closeModal();
+    afOpen(aufId);
+  };
+
+  // ---- Raum anlegen: Wände einzeln ----
+  window.afAddCustom = function (aufId) {
+    var a = getAuf(aufId); if (!a) return;
+    a.rooms = a.rooms || [];
+    var room = { id: (typeof uid === 'function' ? uid('rm') : 'rm_' + Date.now()), name: 'Raum ' + (a.rooms.length + 1), height: 2.50, walls: [{ len: 4, turn: 90 }, { len: 3, turn: 90 }, { len: 4, turn: 90 }, { len: 3, turn: 90 }], openings: [] };
+    a.rooms.push(room);
+    if (typeof saveState === 'function') saveState();
+    afOpen(aufId);
+    afEditRoom(aufId, room.id);
+  };
+
+  window.afDelRoom = function (aufId, roomId) {
+    if (!confirm('Raum löschen?')) return;
+    var a = getAuf(aufId); if (!a) return;
+    a.rooms = (a.rooms || []).filter(function (r) { return r.id !== roomId; });
+    if (typeof saveState === 'function') saveState();
+    afOpen(aufId);
+  };
+
+  // ---- Raum-Editor (Maße, Wände, Öffnungen) ----
+  window.afEditRoom = function (aufId, roomId) {
+    var a = getAuf(aufId); if (!a) return;
+    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
+    var wallsHtml = (room.walls || []).map(function (w, i) {
+      return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">' +
+        '<span style="width:52px;color:#667;font-size:12px;">Wand ' + (i + 1) + '</span>' +
+        '<input type="number" step="0.01" min="0" value="' + (w.len || 0) + '" id="rw_' + i + '" style="width:90px;" placeholder="Länge m">' +
+        '<span style="font-size:12px;color:#889;">m, abbiegen</span>' +
+        '<input type="number" step="1" value="' + (w.turn == null ? 90 : w.turn) + '" id="rt_' + i + '" style="width:70px;" title="Winkel in Grad (90 = rechter Winkel, negativ = links)">' +
+        '<span style="font-size:12px;color:#889;">°</span>' +
+        '<button class="danger small" onclick="afRemWall(\'' + aufId + '\',\'' + roomId + '\',' + i + ')">✕</button></div>';
+    }).join('');
+    var opHtml = (room.openings || []).map(function (o, i) {
+      return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">' +
+        '<select id="ro_t_' + i + '" style="width:90px;"><option value="door"' + (o.type === 'door' ? ' selected' : '') + '>Tür</option><option value="window"' + (o.type === 'window' ? ' selected' : '') + '>Fenster</option></select>' +
+        '<input type="number" step="0.01" value="' + (o.w || 0) + '" id="ro_w_' + i + '" style="width:70px;" placeholder="Breite"> ×' +
+        '<input type="number" step="0.01" value="' + (o.h || 0) + '" id="ro_h_' + i + '" style="width:70px;" placeholder="Höhe"> m, ×' +
+        '<input type="number" step="1" min="1" value="' + (o.count || 1) + '" id="ro_c_' + i + '" style="width:52px;">' +
+        '<button class="danger small" onclick="afRemOpening(\'' + aufId + '\',\'' + roomId + '\',' + i + ')">✕</button></div>';
+    }).join('');
+    showModal('<h2>✎ ' + esc(room.name) + ' — Maße</h2>' +
+      '<div class="row2"><div><label>Raumname</label><input id="reName" value="' + esc(room.name) + '"></div>' +
+      '<div><label>Raumhöhe (m)</label><input type="number" step="0.01" min="0" id="reH" value="' + (room.height || 0) + '"></div></div>' +
+      '<h3 style="margin:12px 0 6px;font-size:14px;">Wände (Länge + Abbiegewinkel)</h3>' +
+      '<div id="reWalls">' + wallsHtml + '</div>' +
+      '<button class="secondary small" onclick="afAddWall(\'' + aufId + '\',\'' + roomId + '\')">+ Wand</button>' +
+      '<h3 style="margin:14px 0 6px;font-size:14px;">Öffnungen (werden von der Wandfläche abgezogen)</h3>' +
+      '<div id="reOps">' + (opHtml || '<div style="color:#889;font-size:12px;">keine</div>') + '</div>' +
+      '<button class="secondary small" onclick="afAddOpening(\'' + aufId + '\',\'' + roomId + '\')">+ Öffnung</button>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
+      '<button class="success" onclick="afSaveRoom(\'' + aufId + '\',\'' + roomId + '\')">Speichern</button></div>', 'wide');
+  };
+  function readEditor(room) {
+    room.name = (document.getElementById('reName').value || '').trim() || room.name;
+    room.height = Number(document.getElementById('reH').value) || 0;
+    var walls = [];
+    (room.walls || []).forEach(function (w, i) {
+      var l = document.getElementById('rw_' + i), tn = document.getElementById('rt_' + i);
+      if (l) walls.push({ len: Number(l.value) || 0, turn: tn ? (Number(tn.value) || 0) : 90 });
+    });
+    room.walls = walls;
+    var ops = [];
+    (room.openings || []).forEach(function (o, i) {
+      var tt = document.getElementById('ro_t_' + i);
+      if (!tt) return;
+      ops.push({ type: tt.value, w: Number((document.getElementById('ro_w_' + i) || {}).value) || 0, h: Number((document.getElementById('ro_h_' + i) || {}).value) || 0, count: Number((document.getElementById('ro_c_' + i) || {}).value) || 1 });
+    });
+    room.openings = ops;
+    if (room.rect) delete room.rect;
+  }
+  window.afSaveRoom = function (aufId, roomId) {
+    var a = getAuf(aufId); if (!a) return;
+    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
+    readEditor(room);
+    if (typeof saveState === 'function') saveState();
+    if (typeof closeModal === 'function') closeModal();
+    afOpen(aufId);
+  };
+  function afMutRoom(aufId, roomId, fn) {
+    var a = getAuf(aufId); if (!a) return;
+    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
+    readEditor(room); fn(room);
+    if (typeof saveState === 'function') saveState();
+    afEditRoom(aufId, roomId);
+  }
+  window.afAddWall = function (aufId, roomId) { afMutRoom(aufId, roomId, function (r) { r.walls.push({ len: 2, turn: 90 }); }); };
+  window.afRemWall = function (aufId, roomId, i) { afMutRoom(aufId, roomId, function (r) { r.walls.splice(i, 1); }); };
+  window.afAddOpening = function (aufId, roomId) { afMutRoom(aufId, roomId, function (r) { r.openings = r.openings || []; r.openings.push({ type: 'door', w: 0.9, h: 2.0, count: 1 }); }); };
+  window.afRemOpening = function (aufId, roomId, i) { afMutRoom(aufId, roomId, function (r) { r.openings.splice(i, 1); }); };
+
+  // ---- Übernahme ins Angebot ----
+  window.afToAngebot = function (aufId) {
+    var a = getAuf(aufId); if (!a) return;
+    if (typeof openAngebotDetail !== 'function') { toast('Angebots-Modul nicht aktiv.'); return; }
+    if (!(a.rooms || []).length) { alert('Kein Raum vorhanden.'); return; }
+    if (!Array.isArray(S().angebote)) S().angebote = [];
+    var items = [], nr = 1;
+    (a.rooms || []).forEach(function (room) {
+      var m = roomMetrics(room);
+      items.push({ isHeader: true, name: room.name });
+      items.push({ nr: nr++, name: 'Bodenfläche ' + room.name, qty: Math.round(m.floor * 100) / 100, unit: 'm²', price: 0 });
+      items.push({ nr: nr++, name: 'Wandfläche (netto) ' + room.name, qty: Math.round(m.wallNet * 100) / 100, unit: 'm²', price: 0 });
+      items.push({ nr: nr++, name: 'Deckenfläche ' + room.name, qty: Math.round(m.ceiling * 100) / 100, unit: 'm²', price: 0 });
+    });
+    var number = (typeof nextAngebotNumber === 'function') ? nextAngebotNumber() : ('AN-' + Date.now());
+    if (S().angebotSettings) S().angebotSettings.nextNumber = (S().angebotSettings.nextNumber || 1) + 1;
+    var today = new Date().toISOString().slice(0, 10);
+    var ang = {
+      id: (typeof uid === 'function' ? uid('ang') : 'ang_' + Date.now()), number: number,
+      title: 'Aufmaß ' + a.name, date: today, validUntil: today, status: 'draft',
+      kundeId: a.kundeId || '', kundeSnapshot: { name: a.kundeName || '' },
+      vatRate: (S().invoiceSettings && S().invoiceSettings.vatRate) || 19, totalDiscount: 0,
+      items: items, net: 0, ust: 0, gross: 0,
+      description: 'Automatisch aus Aufmaß „' + a.name + '" erstellt. Preise noch einzutragen.', notes: '', fromAufmassId: a.id
+    };
+    S().angebote.push(ang);
+    if (typeof saveState === 'function') saveState();
+    toast('✓ Angebot ' + number + ' aus Aufmaß erstellt — bitte Preise ergänzen.');
+    if (typeof switchTab === 'function') switchTab('angebote');
+    setTimeout(function () { try { openAngebotDetail(ang.id); } catch (e) {} }, 60);
+  };
+
+  // ---- AR-Messen (Beta) — best effort über WebXR, sonst ehrlicher Hinweis ----
+  window.afStartAR = function () {
+    if (!navigator.xr || !navigator.xr.isSessionSupported) {
+      alert('AR-Messen wird von diesem Gerät/Browser nicht unterstützt.\n\nAuf dem iPhone unterstützt Safari kein Web-AR — dort bitte die Maße per Eingabe erfassen. Für echtes LiDAR-Scannen ist eine native App nötig (Roadmap).');
+      return;
+    }
+    navigator.xr.isSessionSupported('immersive-ar').then(function (ok) {
+      if (!ok) { alert('Dieses Gerät unterstützt kein Web-AR (immersive-ar).\nBitte Maße per Eingabe erfassen.'); return; }
+      alert('AR-Messen (Beta): Diese Vorschau startet eine AR-Sitzung zum Abgreifen von Strecken. Vollständige Integration ins Aufmaß folgt. Für den produktiven Einsatz empfehlen wir aktuell die Eingabe der Maße.');
+    }).catch(function () {
+      alert('AR-Messen konnte nicht gestartet werden. Bitte Maße per Eingabe erfassen.');
+    });
+  };
+})();
 </script>
 
 </body>
