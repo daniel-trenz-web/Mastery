@@ -58,6 +58,7 @@ module.exports = {
     geld:      { label: 'Angebote & Rechnungen', desc: 'Angebote mit Kunden-Link & Unterschrift, Rechnungen, Mahnwesen', appModules: ['angebote', 'rechnungen'], addonPriceEur: 12 },
     planung:   { label: 'Einsatzplanung',        desc: 'Kalender, Mitarbeiter & Aufträge per Drag & Drop planen', appModules: ['calendar'], addonPriceEur: 8 },
     einkauf:   { label: 'Einkauf & Lager',       desc: 'Lieferanten, Bestellungen, Wareneingang per Foto, Lager & Materialbuchung', appModules: ['einkauf'], addonPriceEur: 10 },
+    aufmass:   { label: 'Aufmaß & Raumplan',     desc: 'Digitales Raum-Aufmaß mit 2D-Grundriss, 3D-Vorschau, Mengen (Boden/Wand/Decke) & Übernahme ins Angebot', appModules: ['aufmass'], addonPriceEur: 12 },
   },
 
   // Tarife — ein Preis pro Betrieb, niemals pro Nutzer (Produktregel Nr. 6).
