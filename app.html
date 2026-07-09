@@ -55989,8 +55989,93 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       '<label>Absender-Adresse (optional, Standard = Server-Postfach)</label><input id="mailFrom" placeholder="info@deinbetrieb.de">' +
       '<p style="margin-top:8px;"><button class="secondary" onclick="bhSaveMail()">Speichern</button></p>');
 
+    // Weitere Exporte / Pflicht-Schnittstellen
+    html += card('📤 Weitere Exporte & Schnittstellen',
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+      '<button class="secondary" onclick="bhGobdExport()">🧾 GoBD-Prüferexport (ZIP)</button>' +
+      '<button class="secondary" onclick="bhSepaTransfer()">💶 SEPA-Überweisung offener Eingangsrechnungen</button>' +
+      '<button class="secondary" onclick="bhEmitERechnung()">📄 Letzte Rechnung als XRechnung</button>' +
+      '<button class="secondary" onclick="bhIcalPublish()">📆 Kalender-Abo (iCal) erzeugen</button>' +
+      '</div>' +
+      '<div id="icalUrl"></div>' +
+      '<div style="margin-top:12px;"><label>📐 GAEB-LV importieren (Ausschreibung D81/D83)</label>' +
+      '<input type="file" id="gaebFile" accept=".x81,.x83,.x86,.p83,.xml">' +
+      '<button class="success small" style="margin-left:6px;" onclick="bhGaebImport()">Einlesen</button><div id="gaebResult"></div></div>' +
+      '<p style="font-size:12px;color:#789;margin-top:10px;">GoBD-Export = Datensatz fürs Finanzamt (index.xml + CSV). XRechnung/ZUGFeRD = gesetzeskonforme E-Rechnung. SEPA = Zahldatei fürs Online-Banking. GAEB = LV-Austausch mit Ausschreibungen (Angebot als D84 zurück).</p>');
+
     main.innerHTML = html;
     bhLoadState();
+  };
+
+  // ---- Weitere Exporte ----
+  window.bhGobdExport = function () {
+    if (!online()) return offlineMsg();
+    var out = (S().invoices || []).filter(function (i) { return i.type !== 'gutschrift'; }).map(function (i) {
+      return { number: i.number, date: (i.date || '').slice(0, 10), party: (i.kundeSnapshot && i.kundeSnapshot.name) || '', net: i.net, vat: i.ust, gross: i.gross, paidDate: i.paidAt ? new Date(i.paidAt).toISOString().slice(0, 10) : '' };
+    });
+    var inc = (S().incomingInvoices || []).map(function (i) { return { number: i.invoiceNumber, date: (i.invoiceDate || '').slice(0, 10), party: i.supplierName || '', gross: i.totalGross, paidDate: i.paidAt ? new Date(i.paidAt).toISOString().slice(0, 10) : '' }; });
+    var years = out.concat(inc).map(function (x) { return (x.date || '').slice(0, 4); }).filter(Boolean).sort();
+    var range = { from: (years[0] || '2020') + '-01-01', to: (years[years.length - 1] || '2030') + '-12-31' };
+    apiBlob('/gobd/export', { range: range, outgoing: out, incoming: inc }).then(function (r) { return r.blob(); }).then(function (b) { download('GoBD-Export.zip', b); toast('✓ GoBD-Export erstellt.'); });
+  };
+  window.bhSepaTransfer = function () {
+    if (!online()) return offlineMsg();
+    var pays = (S().incomingInvoices || []).filter(function (i) { return !i.paidAt && (i.iban || (i.data && i.data.iban)); }).map(function (i) {
+      return { endToEndId: i.invoiceNumber, amount: i.totalGross, name: i.supplierName || '', iban: i.iban || (i.data && i.data.iban) || '', remittance: 'Rechnung ' + (i.invoiceNumber || '') };
+    });
+    if (!pays.length) { alert('Keine offenen Eingangsrechnungen mit IBAN gefunden. IBAN in der Eingangsrechnung ergänzen (E-Rechnungen liefern sie automatisch mit).'); return; }
+    var debtor = { name: (S().companySettings && S().companySettings.name) || 'Mein Betrieb', iban: (S().companySettings && S().companySettings.iban) || '' };
+    if (!debtor.iban) debtor.iban = prompt('IBAN deines Geschäftskontos (Absender):', '') || '';
+    apiBlob('/sepa/credit-transfer', { debtor: debtor, payments: pays }).then(function (r) { return r.blob(); }).then(function (b) { download('sepa-ueberweisung.xml', b); toast('✓ SEPA-Datei mit ' + pays.length + ' Zahlungen erstellt.'); });
+  };
+  window.bhEmitERechnung = function () {
+    if (!online()) return offlineMsg();
+    var invs = (S().invoices || []).filter(function (i) { return i.type !== 'gutschrift'; });
+    var inv = invs[invs.length - 1];
+    if (!inv) { alert('Keine Rechnung vorhanden.'); return; }
+    var cs = S().companySettings || {};
+    var payload = { format: 'xrechnung',
+      invoice: { number: inv.number, date: (inv.date || '').slice(0, 10), dueDate: (inv.dueDate || '').slice(0, 10),
+        lines: (inv.items || []).filter(function (it) { return !it.isHeader; }).map(function (it) { return { name: it.name, qty: it.qty || 1, unit: it.unit || 'C62', unitPrice: it.price || 0, vatRate: inv.vatRate || 19 }; }),
+        net: inv.net, vat: inv.ust, gross: inv.gross },
+      seller: { name: cs.name || '', address: cs.address || '', zip: cs.zip || '', city: cs.city || '', vatId: cs.ustId || cs.vatId || '', iban: cs.iban || '' },
+      buyer: { name: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '' } };
+    apiBlob('/invoices/emit', payload).then(function (r) { return r.blob(); }).then(function (b) { download('xrechnung-' + (inv.number || 'rechnung') + '.xml', b); toast('✓ XRechnung erzeugt.'); });
+  };
+  window.bhIcalPublish = function () {
+    if (!online()) return offlineMsg();
+    var events = collectCalendarEvents();
+    apiJson('/ical/publish', 'POST', { name: 'werkflow Kalender', regenerate: false, events: events }).then(function (r) {
+      var box = document.getElementById('icalUrl');
+      if (r.data && r.data.feedUrl) box.innerHTML = '<div style="margin-top:8px;padding:8px;background:#eaf4ff;border-radius:6px;font-size:13px;">📆 Abo-Adresse (' + r.data.count + ' Termine): <b>' + esc(r.data.feedUrl) + '</b><br>In Google/Apple/Outlook-Kalender als abonnierten Kalender per URL hinzufügen.</div>';
+      else toast('iCal-Feed erstellt.');
+    });
+  };
+  function collectCalendarEvents() {
+    var evs = [];
+    (S().appointments || S().calendarEvents || S().termine || []).forEach(function (e) {
+      if (!e.start && !e.date) return;
+      evs.push({ uid: e.id, start: e.start || e.date, end: e.end || '', summary: e.title || e.summary || e.name || 'Termin', location: e.location || e.ort || '', description: e.note || e.description || '', allDay: !!e.allDay });
+    });
+    return evs;
+  }
+  window.bhGaebImport = function () {
+    if (!online()) return offlineMsg();
+    var f = document.getElementById('gaebFile'); if (!f || !f.files[0]) { alert('Bitte GAEB-Datei wählen.'); return; }
+    readFile(f.files[0]).then(function (buf) { return apiRaw('/gaeb/parse', buf, 'application/xml'); }).then(function (r) {
+      var box = document.getElementById('gaebResult');
+      if (r.status !== 200 || !r.data) { toast('GAEB-Import fehlgeschlagen.'); return; }
+      window._gaebItems = r.data.items || [];
+      box.innerHTML = '<p style="margin-top:8px;"><b>' + r.data.itemCount + ' Positionen' + (r.data.projectName ? ' — ' + esc(r.data.projectName) : '') + '</b> ' +
+        '<button class="success small" onclick="bhGaebApply()">Als LV/Materialliste übernehmen</button></p>';
+    });
+  };
+  window.bhGaebApply = function () {
+    var items = window._gaebItems || [];
+    if (!Array.isArray(S().materialLists)) S().materialLists = [];
+    S().materialLists.push({ id: (typeof uid === 'function' ? uid('ml') : 'ml_' + Date.now()), name: 'GAEB-Import ' + new Date().toLocaleDateString('de-DE'), positions: items.map(function (it, i) { return { id: 'mp_' + i, nr: it.pos || (i + 1), name: it.text, unit: it.unit, price: it.up || 0, qty: it.qty }; }) });
+    if (typeof saveState === 'function') saveState();
+    toast('✓ ' + items.length + ' GAEB-Positionen übernommen.');
   };
 
   function bhLoadState() {
