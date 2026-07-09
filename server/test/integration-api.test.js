@@ -14,6 +14,7 @@ process.env.WERKOS_INBOUND_SECRET = 'test-inbound-secret';
 
 const { createServer } = require('../src/server');
 const dbm = require('../src/db');
+const zip = require('../src/zip');
 const { sha256, opaqueToken } = require('../src/util');
 
 let BASE, server, token, tenantId;
@@ -164,4 +165,55 @@ test('IDS-Warenkorb-Rückgabe landet als Bestellung in der Inbox', async () => {
   assert.equal(r.data.positions, 1);
   const inbox = await api('GET', '/api/t/inbox', { token });
   assert.ok(inbox.data.items.some((i) => i.kind === 'order'));
+});
+
+test('Ausgangs-E-Rechnung erzeugen (XRechnung) + wieder einlesbar', async () => {
+  const r = await api('POST', '/api/t/invoices/emit', { token, body: { format: 'xrechnung',
+    invoice: { number: '2026-0099', date: '2026-03-01', lines: [{ name: 'Arbeit', qty: 5, unitPrice: 60, vatRate: 19 }] },
+    seller: { name: 'Mein Betrieb', vatId: 'DE1', iban: 'DE89370400440532013000' }, buyer: { name: 'Kunde' } } });
+  assert.equal(r.status, 200);
+  const xml = r.data.toString('utf8');
+  assert.ok(xml.includes('xrechnung_2.3'));
+  assert.ok(xml.includes('2026-0099'));
+});
+
+test('SEPA-Überweisung erzeugen (pain.001)', async () => {
+  const r = await api('POST', '/api/t/sepa/credit-transfer', { token, body: { debtor: { name: 'B', iban: 'DE89370400440532013000' },
+    payments: [{ amount: 100, name: 'Lieferant', iban: 'DE12500105170648489890', remittance: 'RE-1' }] } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.toString('utf8').includes('pain.001.001.03'));
+});
+
+test('GAEB LV parsen (D83) + D84-Angebot exportieren', async () => {
+  const src = '<GAEB><Award><DP>83</DP><BoQ><Itemlist><Item ID="1"><RNoPart>01.0010</RNoPart><Qty>10.000</Qty><QU>m2</QU><Description><CompleteText><DetailTxt><Text><p><span>Estrich</span></p></Text></DetailTxt></CompleteText></Description></Item></Itemlist></BoQ></Award></GAEB>';
+  let r = await api('POST', '/api/t/gaeb/parse', { token, raw: src, headers: { 'Content-Type': 'application/xml' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.itemCount, 1);
+  r = await api('POST', '/api/t/gaeb/export', { token, body: { items: [{ pos: '01.0010', qty: 10, unit: 'm2', text: 'Estrich', up: 35 }] } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.toString('utf8').includes('DA84'));
+});
+
+test('GoBD-Prüferexport liefert ein ZIP (index.xml + CSVs)', async () => {
+  const r = await api('POST', '/api/t/gobd/export', { token, body: { range: { from: '2026-01-01', to: '2026-12-31' },
+    outgoing: [{ number: '2026-0042', date: '2026-02-01', party: 'S', net: 750, vat: 142.5, gross: 892.5 }], incoming: [] } });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'application/zip');
+  const files = zip.parseZip(r.data);
+  const names = files.map((f) => f.name);
+  assert.ok(names.includes('index.xml'));
+  assert.ok(names.includes('ausgangsrechnungen.csv'));
+});
+
+test('iCal-Feed veröffentlichen und öffentlich abonnieren', async () => {
+  let r = await api('POST', '/api/t/ical/publish', { token, body: { name: 'werkflow', regenerate: true,
+    events: [{ uid: 'e1', summary: 'Baustelle Müller', start: '2026-03-01T08:00', end: '2026-03-01T16:00' }] } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.feedUrl, 'feedUrl vorhanden');
+  const feedPath = r.data.feedUrl.replace(/^https?:\/\/[^/]+/, '');
+  const pub = await api('GET', feedPath);
+  assert.equal(pub.status, 200);
+  const ics = pub.data.toString('utf8');
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR'));
+  assert.ok(ics.includes('SUMMARY:Baustelle Müller'));
 });

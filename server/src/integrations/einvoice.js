@@ -49,7 +49,7 @@ function parseCii(root) {
   if (settle) {
     const terms = xml.find(settle, 'SpecifiedTradePaymentTerms');
     if (terms) inv.dueDate = isoDate(ciiDate(terms));
-    const acct = xml.find(settle, 'CreditorFinancialAccount');
+    const acct = xml.find(settle, 'PayeePartyCreditorFinancialAccount') || xml.find(settle, 'CreditorFinancialAccount');
     if (acct) inv.iban = xml.text(acct, 'IBANID') || xml.text(acct, 'IBAN');
     const sum = xml.find(settle, 'SpecifiedTradeSettlementHeaderMonetarySummation');
     if (sum) {
