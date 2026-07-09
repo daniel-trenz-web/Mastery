@@ -27,7 +27,7 @@
   th { text-align: left; padding: 8px 6px; color: #789; font-size: 11px; text-transform: uppercase;
        border-bottom: 2px solid #e4e9ef; }
   td { padding: 10px 6px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
-  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
   .kpi { background: #fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
   .kpi b { font-size: 24px; display: block; letter-spacing: -0.5px; }
   .kpi span { font-size: 10.5px; color: #789; text-transform: uppercase; letter-spacing: .5px; }
@@ -125,6 +125,7 @@
       '<div class="kpi green"><b>' + eur(s.mrrEur) + '</b><span>MRR / Monat</span></div>' +
       '<div class="kpi"><b>' + s.trials + '</b><span>Test / Demo</span></div>' +
       '<div class="kpi"><b>' + s.salesOffersOpen + '</b><span>Offene Angebote</span></div>' +
+      '<div class="kpi"><b>' + (s.moduleTrials || 0) + '</b><span>Modul-Tests aktiv</span></div>' +
       '<div class="kpi"><b>' + s.leads + '</b><span>Leads</span></div>';
   }
 
@@ -157,6 +158,18 @@
             'title="' + esc(catalog[k].label) + (ov ? ' — Override aktiv' : (planModules.indexOf(k) >= 0 ? ' — im Tarif' : ' — nicht im Tarif')) + '">' +
             (eff ? '✓' : '') + esc(catalog[k].label.split(' ')[0]) + '</span>';
         }).join('');
+        // Aktive Modul-Grants (Trials/Käufe) als Chips + Widerruf
+        var grantChips = (t.grants || []).map(function (g) {
+          var lbl = g.status === 'trial' ? ('🧪 ' + g.label.split(' ')[0] + ' ' + (g.daysLeft != null ? g.daysLeft + 'T' : '')) : ('💚 ' + g.label.split(' ')[0]);
+          return '<span class="mod override" style="cursor:pointer;" data-grev-tid="' + esc(t.id) + '" data-grev-mod="' + esc(g.module) + '" title="' + (g.status === 'trial' ? 'Trial läuft ' + g.daysLeft + ' Tage — Klick: widerrufen' : 'gekauft — Klick: widerrufen') + '">' + lbl + '</span>';
+        }).join('');
+        // Trial-Vergabe: Module, die NICHT im Tarif sind
+        var grantable = Object.keys(catalog).filter(function (k) { return planModules.indexOf(k) < 0; });
+        var grantOpts = grantable.map(function (k) { return '<option value="' + k + '">' + esc(catalog[k].label) + '</option>'; }).join('');
+        var grantCtrl = grantable.length ? ('<div class="row" style="gap:4px;margin-top:6px;">' +
+          '<select data-grant-mod="' + esc(t.id) + '" style="font-size:11px;padding:3px;">' + grantOpts + '</select>' +
+          '<input data-grant-days="' + esc(t.id) + '" type="number" value="14" min="1" max="365" style="width:52px;font-size:11px;padding:3px;" title="Tage">' +
+          '<button class="small" data-grant="' + esc(t.id) + '">🧪 Test geben</button></div>') : '';
         var planOpts = Object.keys(plans).map(function (p) {
           return '<option value="' + p + '"' + (t.plan === p ? ' selected' : '') + '>' + esc(plans[p].label) + '</option>';
         }).join('');
@@ -167,7 +180,7 @@
           '<td><span class="plan-badge plan-' + esc(t.plan) + '">' + esc((plans[t.plan] || {}).label || t.plan) + '</span><br>' +
           '<select data-plansel="' + esc(t.id) + '" style="margin-top:5px;font-size:11.5px;padding:4px;">' + planOpts + '</select><br>' +
           '<span style="font-size:11.5px;">' + typ + '</span></td>' +
-          '<td>' + mods + '</td>' +
+          '<td>' + mods + (grantChips ? '<div style="margin-top:4px;">' + grantChips + '</div>' : '') + grantCtrl + '</td>' +
           '<td>' + (t.user_count || 0) + ' 👤<br><span class="muted">' + (t.storage_bytes / 1048576).toFixed(1) + ' MB · Rev ' + (t.last_rev || 0) + '</span></td>' +
           '<td><span class="st ' + esc(t.status) + '">' + esc(t.status) + '</span><br>' +
           '<div class="row" style="margin-top:6px;gap:4px;">' +
@@ -197,6 +210,22 @@
       });
       el.querySelectorAll('[data-trial]').forEach(function (b) {
         b.onclick = function () { api('POST', '/api/admin/tenants/' + b.dataset.trial + '/trial', { days: 14 }).then(function () { renderTenants(); }); };
+      });
+      // Modul-Trial gewähren
+      el.querySelectorAll('[data-grant]').forEach(function (b) {
+        b.onclick = function () {
+          var tid = b.dataset.grant;
+          var mod = el.querySelector('[data-grant-mod="' + tid + '"]').value;
+          var days = Number(el.querySelector('[data-grant-days="' + tid + '"]').value) || 14;
+          api('POST', '/api/admin/tenants/' + tid + '/grant', { module: mod, days: days }).then(function () { renderTenants(); refreshKpis(); });
+        };
+      });
+      // Grant widerrufen (Chip-Klick)
+      el.querySelectorAll('[data-grev-mod]').forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('Modul-Freischaltung widerrufen? Das Modul wird sofort ausgeschaltet.')) return;
+          api('DELETE', '/api/admin/tenants/' + b.dataset.grevTid + '/grant/' + b.dataset.grevMod).then(function () { renderTenants(); refreshKpis(); });
+        };
       });
       el.querySelectorAll('[data-suspend]').forEach(function (b) {
         b.onclick = function () { if (confirm('Mandant sperren? Schreiben wird blockiert, Lesen/Export bleibt.')) api('POST', '/api/admin/tenants/' + b.dataset.suspend + '/status', { status: 'suspended' }).then(renderTenants); };

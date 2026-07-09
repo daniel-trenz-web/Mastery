@@ -43242,8 +43242,16 @@
   // ---- Wareneingang ----
   function renderLagerWareneingang() {
     const ctr = document.getElementById('lagerContent');
-    ctr.innerHTML = `
-      <div class="help">Wareneingang buchen: Material aus einer Materialliste auswählen, Menge eingeben, optional Lieferant + Notiz.</div>
+    const aiPanel = _aiDNResult ? _renderAiDeliveryReview() : `
+      <div style="background:#f0fbf4; border:1px solid #b5e0c5; padding:12px; border-radius:8px; max-width:600px; margin-bottom:12px;">
+        <h3 style="margin-top:0;">📷 Lieferschein per Foto (KI)</h3>
+        <div class="help" style="margin:0 0 8px;">Lieferschein oder Wareneingangsbeleg fotografieren — die KI liest Lieferant und Positionen aus, du prüfst und buchst mit einem Klick ins Lager. Ohne KI-Zugang: Foto wird als Beleg gespeichert, Mengen manuell erfassen (unten).</div>
+        <input type="file" id="aiDNFile" accept="image/*" capture="environment" style="display:none" onchange="_aiReadDeliveryNote(this)">
+        <button class="success" onclick="document.getElementById('aiDNFile').click()">📷 Lieferschein fotografieren / hochladen</button>
+        <span id="aiDNStatus" style="margin-left:10px; font-size:13px; color:#666;"></span>
+      </div>`;
+    ctr.innerHTML = aiPanel + `
+      <div class="help">Wareneingang manuell buchen: Material aus einer Materialliste auswählen, Menge eingeben, optional Lieferant + Notiz.</div>
       <div style="background:#eaf6ff; padding:12px; border-radius:6px; max-width:600px;">
         <h3 style="margin-top:0;">📥 Wareneingang erfassen</h3>
         <label>Material aus Liste *</label>
@@ -43310,6 +43318,134 @@
     alert('✓ ' + fmtNum(qty, 2) + ' eingebucht — neuer Bestand: ' + fmtNum(s.qty, 2));
     renderLagerTab();
   };
+  // ---- KI-Lieferschein: Foto → Server-KI → Prüfen → Sammelbuchung ----
+  let _aiDNResult = null; // { positions:[{name,qty,unit,price, listId?,posId?}], supplier, photo }
+
+  window._aiReadDeliveryNote = async function(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const status = document.getElementById('aiDNStatus');
+    const cfg = (state.serverConfig || {});
+    // Foto einlesen (komprimiert, falls verfügbar) — dient auch als Beleg
+    let dataUrl;
+    try { dataUrl = (typeof compressImage === 'function') ? await compressImage(file, 1600, 0.72) : await fileToDataUrl(file); }
+    catch (_e) { try { dataUrl = await fileToDataUrl(file); } catch (_e2) { dataUrl = ''; } }
+
+    if (!cfg.apiUrl) {
+      // Kein Server (z.B. Demo): Foto behalten, manuell erfassen
+      _aiDNResult = { positions: [], supplier: '', photo: dataUrl, note: 'Foto erfasst — bitte Positionen manuell buchen.' };
+      renderLagerTab();
+      return;
+    }
+    if (status) status.textContent = '⏳ KI liest den Lieferschein …';
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const r = await fetch(cfg.apiUrl + '/ai/delivery-note', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': blob.type || 'image/jpeg' }, cfg.apiKey ? { 'Authorization': 'Bearer ' + cfg.apiKey } : {}),
+        body: blob
+      });
+      const res = await r.json().catch(() => ({}));
+      if (r.status === 403) { if (status) status.innerHTML = '<span style="color:#c0392b;">Modul „Einkauf & Lager" nicht aktiv.</span>'; return; }
+      if (!res.configured) {
+        // KI nicht aktiviert → Fallback: Foto als Beleg, manuelle Erfassung
+        _aiDNResult = { positions: [], supplier: '', photo: dataUrl, note: res.hint || 'KI nicht aktiviert — bitte Positionen manuell buchen.' };
+        renderLagerTab();
+        return;
+      }
+      if (!res.ok) { if (status) status.innerHTML = '<span style="color:#c0392b;">KI-Fehler: ' + escapeHtml(res.error || '?') + ' — bitte manuell erfassen.</span>'; return; }
+      const d = res.data || {};
+      // Erkannte Positionen mit vorhandenem Material fuzzy verknüpfen
+      const positions = (d.positions || []).map(p => {
+        const match = _fuzzyMatchMaterial(p.name);
+        return { name: p.name, qty: Number(p.qty) || 0, unit: p.unit || (match ? match.pos.unit : ''), price: Number(p.price) || 0,
+                 listId: match ? match.listId : '', posId: match ? match.posId : '' };
+      });
+      const supMatch = (state.suppliers || []).find(s => d.supplier && s.name && s.name.toLowerCase().includes(String(d.supplier).toLowerCase().slice(0, 6)));
+      _aiDNResult = { positions, supplier: supMatch ? supMatch.id : '', supplierName: d.supplier || '', docNumber: d.documentNumber || '', photo: dataUrl, confidence: d.confidence };
+      renderLagerTab();
+    } catch (e) {
+      if (status) status.innerHTML = '<span style="color:#c0392b;">Netzwerkfehler — bitte manuell erfassen.</span>';
+    }
+  };
+
+  function _fuzzyMatchMaterial(name) {
+    if (!name) return null;
+    const n = String(name).toLowerCase().replace(/[^a-zäöüß0-9 ]/g, ' ').trim();
+    const words = n.split(/\s+/).filter(w => w.length >= 3);
+    let best = null, bestScore = 0;
+    (state.materialLists || []).forEach(list => (list.positions || []).forEach(pos => {
+      const pn = String(pos.name || '').toLowerCase();
+      let score = 0;
+      words.forEach(w => { if (pn.includes(w)) score += w.length; });
+      if (score > bestScore) { bestScore = score; best = { listId: list.id, posId: pos.id, pos }; }
+    }));
+    return bestScore >= 3 ? best : null;
+  }
+
+  function _renderAiDeliveryReview() {
+    const r = _aiDNResult;
+    const matOpts = (posMatch) => '<option value="">— Material wählen —</option>' +
+      (state.materialLists || []).map(list => '<optgroup label="' + escapeHtml(list.name) + '">' +
+        (list.positions || []).map(pos => `<option value="${list.id}|${pos.id}"${(posMatch && posMatch === list.id + '|' + pos.id) ? ' selected' : ''}>${escapeHtml((pos.nr ? pos.nr + ' · ' : '') + pos.name)}</option>`).join('') + '</optgroup>').join('');
+    let html = '<div style="background:#f0fbf4; border:1px solid #b5e0c5; padding:14px; border-radius:8px; max-width:760px; margin-bottom:14px;">';
+    html += '<h3 style="margin-top:0;">📷 Lieferschein geprüft & buchen</h3>';
+    if (r.photo) html += '<img src="' + r.photo + '" style="max-height:120px; border-radius:6px; float:right; margin-left:10px; border:1px solid #ccc;">';
+    if (r.note) html += '<div class="help">' + escapeHtml(r.note) + '</div>';
+    else html += '<div class="help">KI-Vorschlag — bitte Mengen und Material-Zuordnung prüfen, dann buchen.' + (r.confidence != null ? ' Lesbarkeit: ' + Math.round(r.confidence * 100) + '%' : '') + '</div>';
+    if (r.supplierName) html += '<div style="font-size:13px; margin:4px 0;">Lieferant erkannt: <b>' + escapeHtml(r.supplierName) + '</b>' + (r.docNumber ? ' · Beleg ' + escapeHtml(r.docNumber) : '') + '</div>';
+
+    if (r.positions && r.positions.length) {
+      html += '<table style="width:100%; font-size:13px; border-collapse:collapse; margin-top:8px;"><thead><tr style="text-align:left;">' +
+        '<th style="padding:4px;">Erkannt</th><th style="padding:4px; width:80px;">Menge</th><th style="padding:4px;">→ Material im Lager</th></tr></thead><tbody>';
+      r.positions.forEach((p, i) => {
+        html += '<tr style="border-top:1px solid #d5eadd;">' +
+          '<td style="padding:4px;">' + escapeHtml(p.name) + '</td>' +
+          '<td style="padding:4px;"><input type="number" id="aiQ' + i + '" value="' + (p.qty || '') + '" step="0.01" min="0" style="width:70px;"> ' + escapeHtml(p.unit || '') + '</td>' +
+          '<td style="padding:4px;"><select id="aiM' + i + '" class="searchable">' + matOpts(p.listId && p.posId ? (p.listId + '|' + p.posId) : '') + '</select></td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="color:#856404; margin-top:6px;">Keine Positionen automatisch erkannt — bitte unten manuell buchen. Das Foto ist als Beleg gespeichert.</div>';
+    }
+    html += '<label style="margin-top:10px;">Lieferant (optional)</label><select id="aiSup"><option value="">— optional —</option>' +
+      (state.suppliers || []).map(s => `<option value="${s.id}"${r.supplier === s.id ? ' selected' : ''}>${escapeHtml(s.name)}</option>`).join('') + '</select>';
+    html += '<div style="margin-top:12px; display:flex; gap:8px;">' +
+      (r.positions && r.positions.length ? '<button class="success" onclick="_aiBookDeliveryNote()">📥 Alle zugeordneten Positionen buchen</button>' : '') +
+      '<button class="secondary" onclick="_aiDNCancel()">Verwerfen</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  window._aiDNCancel = function() { _aiDNResult = null; renderLagerTab(); };
+
+  window._aiBookDeliveryNote = async function() {
+    const r = _aiDNResult; if (!r) return;
+    const supplierId = document.getElementById('aiSup') ? document.getElementById('aiSup').value || null : null;
+    let booked = 0;
+    r.positions.forEach((p, i) => {
+      const matVal = (document.getElementById('aiM' + i) || {}).value || '';
+      const qty = Number((document.getElementById('aiQ' + i) || {}).value) || 0;
+      if (!matVal || qty <= 0) return;
+      const [listId, posId] = matVal.split('|');
+      const s = _ensureStockEntry(listId, posId);
+      s.qty = (Number(s.qty) || 0) + qty;
+      state.warehouseMovements.push({
+        id: uid('wm'), listId, materialPosId: posId, type: 'in', qty,
+        supplierId, purchaseOrderId: null, note: 'KI-Lieferschein' + (r.docNumber ? ' ' + r.docNumber : ''),
+        createdAt: Date.now(), createdBy: currentEmployeeId || 'admin'
+      });
+      booked++;
+    });
+    if (!booked) { alert('Bitte mindestens eine Position mit Material und Menge zuordnen.'); return; }
+    if (typeof audit === 'function') audit('lager.ai-eingang', { positions: booked, doc: r.docNumber || '' });
+    _aiDNResult = null;
+    await saveState();
+    if (typeof mToast === 'function') mToast('✓ ' + booked + ' Position(en) aus Lieferschein eingebucht.');
+    renderLagerTab();
+  };
+
   // Direkt-Wareneingang aus Tabelle
   window.openLagerEingang = function(listId, posId) {
     _lagerSubTab = 'wareneingang';
