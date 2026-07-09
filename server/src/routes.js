@@ -22,6 +22,14 @@ const ugl = require('./integrations/ugl');
 const ids = require('./integrations/ids');
 const lexoffice = require('./integrations/lexoffice');
 const sitegen = require('./integrations/sitegen');
+const xrechnung = require('./integrations/xrechnung');
+const gaeb = require('./integrations/gaeb');
+const sepa = require('./integrations/sepa');
+const gobd = require('./integrations/gobd');
+const payroll = require('./integrations/payroll');
+const ical = require('./integrations/ical');
+const weather = require('./integrations/weather');
+const zipm = require('./zip');
 const {
   id, nowIso, hashPassword, verifyPassword, signToken, opaqueToken,
   rateLimit, normEmail, isEmail, sha256,
@@ -912,6 +920,17 @@ async function handleIntegrations(req, res, pathname, m) {
     return send(res, 200, { ok: true, inboxId: iid, count: txs.length });
   }
 
+  // ---- Öffentlicher iCal-Feed (abonnierbar in Google/Apple/Outlook) ----
+  const icalFeed = pathname.match(/^\/api\/public\/ical\/([A-Za-z0-9_-]{16,})\.ics$/);
+  if (icalFeed && m === 'GET') {
+    if (!rateLimit('ical:' + clientIp(req), 300, 900e3)) return err(res, 429, 'rate-limited');
+    const owner = dbm.findTenantByInboxToken('ical', sha256(icalFeed[1]));
+    if (!owner) return err(res, 404, 'not-found');
+    const conf = safeParse(owner);
+    const ics = ical.buildICal(conf.events || [], { name: conf.name || 'werkflow Kalender' });
+    return send(res, 200, ics, { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+  }
+
   // ---- Ab hier: authentifizierte Mandanten-Endpunkte ----
   if (!pathname.startsWith('/api/t/')) return undefined;
 
@@ -1108,6 +1127,95 @@ async function handleIntegrations(req, res, pathname, m) {
     dbm.upsertSite(site);
     dbm.audit(ctx.tenant.id, ctx.user.id, 'site.' + sitePub[2], { slug: site.slug, domain: site.domain });
     return send(res, 200, { ok: true, status: site.status, publicUrl: reqBaseUrl(req) + '/api/public/site/' + site.slug + '/index.html', domain: site.domain });
+  }
+
+  // ---- Ausgangs-E-Rechnung erzeugen (XRechnung / ZUGFeRD) ----
+  if (pathname === '/api/t/invoices/emit' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'geld') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'geld' });
+    const b = await readJson(req, 512e3);
+    const xml = b.format === 'zugferd' ? xrechnung.buildZugferdCii(b.invoice || {}, b.seller || {}, b.buyer || {}) : xrechnung.buildXRechnung(b.invoice || {}, b.seller || {}, b.buyer || {});
+    const name = (b.format === 'zugferd' ? 'zugferd-' : 'xrechnung-') + ((b.invoice && b.invoice.number) || 'rechnung') + '.xml';
+    return send(res, 200, xml, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + name + '"' });
+  }
+
+  // ---- GAEB: LV einlesen / D84-Angebot exportieren ----
+  if (pathname === '/api/t/gaeb/parse' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'lv') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'lv' });
+    const buf = await readBody(req, cfg.MAX_FILE_BYTES);
+    return send(res, 200, gaeb.parseGaeb(buf.toString('utf8')));
+  }
+  if (pathname === '/api/t/gaeb/export' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'lv') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'lv' });
+    const b = await readJson(req, 4e6);
+    const xml = gaeb.buildGaebD84(b.items || [], b.meta || {});
+    return send(res, 200, xml, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="angebot-d84.X84"' });
+  }
+
+  // ---- SEPA: Überweisung / Lastschrift ----
+  if (pathname === '/api/t/sepa/credit-transfer' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 2e6);
+    const xml = sepa.buildCreditTransfer(b);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'sepa.credit-transfer', { count: (b.payments || []).length });
+    return send(res, 200, xml, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="sepa-ueberweisung.xml"' });
+  }
+  if (pathname === '/api/t/sepa/direct-debit' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 2e6);
+    const xml = sepa.buildDirectDebit(b);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'sepa.direct-debit', { count: (b.payments || []).length });
+    return send(res, 200, xml, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="sepa-lastschrift.xml"' });
+  }
+
+  // ---- GoBD/GDPdU-Prüferexport (ZIP: index.xml + CSVs) ----
+  if (pathname === '/api/t/gobd/export' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
+    const b = await readJson(req, 8e6);
+    const files = gobd.buildGobdExport({ supplierName: ctx.tenant.name, range: b.range || {}, outgoing: b.outgoing || [], incoming: b.incoming || [] });
+    const zipBuf = zipm.buildZip(Object.keys(files).map(function (n) { return { name: n, data: files[n] }; }));
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'gobd.export', { from: (b.range || {}).from, to: (b.range || {}).to });
+    return send(res, 200, zipBuf, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="GoBD-Export.zip"' });
+  }
+
+  // ---- Lohn-Export ----
+  if (pathname === '/api/t/payroll/export' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!moduleAllowed(ctx.tenant, 'zeiten') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'zeiten' });
+    const b = await readJson(req, 4e6);
+    const csv = b.format === 'datev' ? payroll.buildDatevLohn(b.entries || [], b.meta || {}) : payroll.buildPayrollCsv(b.entries || [], b.meta || {});
+    return send(res, 200, csv, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="lohn-export.csv"' });
+  }
+
+  // ---- iCal-Feed: Termine hinterlegen + Abo-Adresse ----
+  if (pathname === '/api/t/ical/publish' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return null;
+    if (!moduleAllowed(ctx.tenant, 'calendar') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'calendar' });
+    const b = await readJson(req, 4e6);
+    let rec = dbm.getIntegration(ctx.tenant.id, 'ical');
+    let token = b.token;
+    let tokenHash = rec && rec.inbox_token_hash;
+    if (!tokenHash || b.regenerate) { const t = opaqueToken(); token = t.token; tokenHash = t.hash; }
+    dbm.setIntegration(ctx.tenant.id, 'ical', { events: (b.events || []).slice(0, 5000), name: b.name || 'werkflow Kalender' }, tokenHash);
+    const url = token ? (reqBaseUrl(req) + '/api/public/ical/' + token + '.ics') : undefined;
+    return send(res, 200, { ok: true, feedUrl: url, count: (b.events || []).length });
+  }
+
+  // ---- Wetter fürs Bautagebuch (open-meteo, live) ----
+  const weatherReq = pathname.match(/^\/api\/t\/weather$/);
+  if (weatherReq && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return null;
+    const u = new URL(req.url, 'http://x');
+    const place = u.searchParams.get('place') || '';
+    const date = u.searchParams.get('date') || '';
+    if (!place) return err(res, 400, 'place-required');
+    return send(res, 200, await weather.fetchWeather(place, date));
   }
 
   return undefined;

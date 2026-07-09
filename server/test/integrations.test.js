@@ -161,3 +161,81 @@ test('Website-Generator: valides HTML, SEO, Consent, Rechtstexte, 3 Vorlagen', (
   const rx = sitegen.renderSite(null, { companyName: '<script>x</script>' }, { input: { companyName: '<script>x</script>' } });
   assert.ok(!rx.pages['index.html'].includes('<script>x</script>'));
 });
+
+const xrechnung = require('../src/integrations/xrechnung');
+const sepa = require('../src/integrations/sepa');
+const gaeb = require('../src/integrations/gaeb');
+const gobd = require('../src/integrations/gobd');
+const payroll = require('../src/integrations/payroll');
+const ical = require('../src/integrations/ical');
+const weather = require('../src/integrations/weather');
+
+test('Ausgangs-E-Rechnung: XRechnung + ZUGFeRD Round-Trip', () => {
+  const inv = { number: '2026-0042', date: '2026-02-01', dueDate: '2026-02-15',
+    lines: [{ name: 'Arbeit', qty: 10, unit: 'HUR', unitPrice: 55, vatRate: 19 }, { name: 'Material', qty: 1, unitPrice: 200, vatRate: 19 }] };
+  const seller = { name: 'Elektro Müller GmbH', address: 'Hauptstr. 5', zip: '70173', city: 'Stuttgart', vatId: 'DE123456789', iban: 'DE89370400440532013000' };
+  const buyer = { name: 'Familie Schmidt' };
+  const xr = einvoice.parseEInvoice(Buffer.from(xrechnung.buildXRechnung(inv, seller, buyer)), 'application/xml');
+  assert.equal(xr.ok, true);
+  assert.equal(xr.data.invoiceNumber, '2026-0042');
+  assert.equal(xr.data.net, 750);
+  assert.equal(xr.data.gross, 892.5);
+  assert.equal(xr.data.iban, 'DE89370400440532013000');
+  const cii = einvoice.parseEInvoice(Buffer.from(xrechnung.buildZugferdCii(inv, seller, buyer)), 'application/xml');
+  assert.equal(cii.ok, true);
+  assert.equal(cii.data.gross, 892.5);
+  assert.equal(cii.data.iban, 'DE89370400440532013000');
+});
+
+test('SEPA: pain.001 Überweisung + pain.008 Lastschrift', () => {
+  const ct = sepa.buildCreditTransfer({ debtor: { name: 'Betrieb', iban: 'DE89370400440532013000' }, executionDate: '2026-03-01',
+    payments: [{ endToEndId: 'RE-1', amount: 142.80, name: 'Raab Karcher', iban: 'DE12500105170648489890', remittance: 'RE-1' }], now: new Date(2026, 1, 20) });
+  assert.ok(/pain\.001\.001\.03/.test(ct));
+  assert.ok(/<CtrlSum>142\.80<\/CtrlSum>/.test(ct));
+  const dd = sepa.buildDirectDebit({ creditor: { name: 'Betrieb', iban: 'DE89370400440532013000', creditorId: 'DE98ZZZ09999999999' }, collectionDate: '2026-03-05',
+    payments: [{ amount: 892.50, name: 'Schmidt', iban: 'DE12500105170648489890', mandateId: 'M1', mandateDate: '2025-01-01' }], now: new Date(2026, 1, 20) });
+  assert.ok(/pain\.008\.001\.02/.test(dd));
+  assert.ok(dd.includes('DE98ZZZ09999999999'));
+});
+
+test('GAEB: LV parsen + D84-Angebot exportieren (Round-Trip)', () => {
+  const src = '<GAEB xmlns="http://www.gaeb.de/GAEB_DA_XML/DA83/3.2"><PrjInfo><NamePrj>Kita</NamePrj></PrjInfo><Award><DP>83</DP><BoQ><BoQBody><Itemlist>' +
+    '<Item ID="0001"><RNoPart>01</RNoPart><RNoPart>0010</RNoPart><Qty>100.000</Qty><QU>m2</QU><Description><CompleteText><DetailTxt><Text><p><span>Estrich</span></p></Text></DetailTxt></CompleteText></Description></Item>' +
+    '</Itemlist></BoQBody></BoQ></Award></GAEB>';
+  const p = gaeb.parseGaeb(src);
+  assert.equal(p.itemCount, 1);
+  assert.equal(p.items[0].pos, '01.0010');
+  assert.equal(p.items[0].qty, 100);
+  assert.equal(p.items[0].text, 'Estrich');
+  const d84 = gaeb.buildGaebD84([Object.assign({}, p.items[0], { up: 35 })], { now: new Date(2026, 0, 1) });
+  assert.ok(/DA84\/3\.2/.test(d84));
+  assert.equal(gaeb.parseGaeb(d84).items[0].total, 3500);
+});
+
+test('GoBD/GDPdU-Prüferexport: index.xml + CSV', () => {
+  const files = gobd.buildGobdExport({ supplierName: 'X', range: { from: '2026-01-01', to: '2026-12-31' },
+    outgoing: [{ number: '2026-0042', date: '2026-02-01', party: 'Schmidt', net: 750, vat: 142.5, gross: 892.5 }], incoming: [] });
+  assert.ok(files['index.xml'].includes('<!DOCTYPE DataSet'));
+  assert.ok(files['index.xml'].includes('<VariablePrimaryKey/>'));
+  assert.ok(files['ausgangsrechnungen.csv'].includes('"892,50"'));
+});
+
+test('Lohn-Export: generisches CSV + DATEV-LODAS', () => {
+  const csv = payroll.buildPayrollCsv([{ personalNr: '100', name: 'A', hours: 160, overtime: 8, hourlyRate: 25 }]);
+  assert.ok(csv.includes('"4200,00"'));
+  assert.ok(payroll.buildDatevLohn([{ personalNr: '100', lohnart: '200', wert: 160 }], {}).includes('Ziel=LODAS'));
+});
+
+test('iCal-Feed: gültiges VCALENDAR mit Escaping', () => {
+  const ics = ical.buildICal([{ summary: 'Baustelle', start: '2026-03-01T08:00', end: '2026-03-01T16:00', description: 'a; b' }], { name: 'werkflow' });
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR'));
+  assert.ok(ics.includes('DTSTART:20260301T080000'));
+  assert.ok(ics.includes('DESCRIPTION:a\\; b'));
+});
+
+test('Wetter: open-meteo-Antwort → Bautagebuch-Zusammenfassung', () => {
+  const w = weather.summarizeDaily({ daily: { time: ['2026-02-20'], weathercode: [61], temperature_2m_max: [8.2], temperature_2m_min: [2.1], precipitation_sum: [4.5] } }, '2026-02-20');
+  assert.equal(w.text, 'leichter Regen');
+  assert.equal(w.tempMax, 8.2);
+  assert.ok(w.summary.includes('Niederschlag 4.5 mm'));
+});
