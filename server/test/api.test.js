@@ -790,7 +790,7 @@ test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async (
   assert.ok(siteHtml.includes('Datenschutzerklärung'), 'Consent-Text vorhanden');
   // Unterseiten + Rechtsseiten
   for (const [p, marker] of [
-    ['/funktionen', 'Fünf Module'],
+    ['/funktionen', 'Aufmaß &amp; Raumplan'],
     ['/preise', 'Leistungsvergleich'],
     ['/faq', 'Fragen &amp; Antworten'],
     ['/impressum', '§ 5 DDG'],
