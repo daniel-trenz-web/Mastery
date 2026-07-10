@@ -8631,7 +8631,6 @@
   // V6.3: Modul-System — User kann einzelne Funktionsbereiche ein-/ausschalten
   const MODULE_CONFIG = [
     { key: 'angebote',    icon: '📨', label: 'Angebote',                desc: 'Angebote erstellen, kalkulieren und als PDF exportieren', tabs: ['angebote'] },
-    { key: 'aufmass',     icon: '📐', label: 'Aufmaß & Raumplan',        desc: 'Digitales Raum-Aufmaß mit 2D-Grundriss, 3D-Vorschau und Mengen (Boden/Wand/Decke)', tabs: ['aufmass'] },
     { key: 'calendar',    icon: '📅', label: 'Kalender / Einsatzplanung', desc: 'Mitarbeiter und Aufträge per Drag&Drop planen, Urlaube/Abwesenheiten erfassen', tabs: ['calendar'] },
     { key: 'reports',     icon: '📋', label: 'Berichte / Bautagebuch',   desc: 'Bauberichte, Tagesberichte, Bautagebuch, eigene Berichts-Vorlagen', tabs: ['reports', 'forms'] },
     { key: 'maengel',     icon: '⚠',  label: 'Mängel-Verwaltung',         desc: 'Mängel erfassen, zuordnen, Status, Fotos und Fristen', tabs: ['maengel'] },
@@ -8641,10 +8640,8 @@
     { key: 'lv',          icon: '📋', label: 'Leistungsverzeichnisse',     desc: 'LV-Listen anlegen, importieren und in Aufträgen verwenden', tabs: ['lv'] },
     { key: 'einkauf',     icon: '🛒', label: 'Einkauf & Lager',            desc: 'Lieferanten, Materiallisten, Eingangsrechnungen, Bestellungen, Lagerhaltung, Inventur, Verbrauchsanalyse', tabs: ['einkauf', 'lager', 'invoices'] },
     { key: 'cockpit',     icon: '🎯', label: 'Controlling-Cockpit',        desc: 'Plan/Ist-Vergleich pro Projekt mit Auswertungen', tabs: ['cockpit'] },
-    { key: 'rechnungen',  icon: '🧾', label: 'Rechnungen / Abrechnungstool', desc: 'Rechnungen, Gutschriften, Sammelrechnungen, Mahnwesen', tabs: ['rechnungen'] },
-    { key: 'wochen',      icon: '📊', label: 'Auswertungen',                desc: 'Wochen- und Monats-Übersichten, KPIs', tabs: ['wochen'] },
-    { key: 'buchhaltung', icon: '🔗', label: 'Buchhaltung & Schnittstellen', desc: 'DATEV, Lexoffice, Bankanbindung mit Zahlungsabgleich, Eingangsrechnungs-Inbox, Händler-Bestellung, E-Mail-Versand', tabs: ['buchhaltung'] },
-    { key: 'website',     icon: '🌐', label: 'Website-Baukasten',           desc: 'KI-generierte, SEO- & DSGVO-konforme Firmen-Website in 3 Vorlagen', tabs: ['website'] }
+    { key: 'rechnungen',  icon: '🧾', label: 'Rechnungen / Abrechnungstool', desc: 'Rechnungen, Abschlags-/Schlussrechnungen (VOB), Mahnwesen, DATEV-Weiterleitung', tabs: ['rechnungen'] },
+    { key: 'wochen',      icon: '📊', label: 'Auswertungen',                desc: 'Wochen- und Monats-Übersichten, KPIs', tabs: ['wochen'] }
   ];
   // Hilfsfunktion: prüft, ob ein Modul aktiv ist (Default: an, falls Setting fehlt)
   function isModuleEnabled(key) {
@@ -8664,41 +8661,32 @@
   window.isModuleEnabled = isModuleEnabled;
   window.isTabEnabled = isTabEnabled;
 
+  // Bewusst schlanke Navigation — nur die Kernfunktionen für den Betriebsalltag.
   const NAV_GROUPS = [
-    { label: 'Heute', items: [
+    { label: 'Start', items: [
       { tab: 'dashboard', icon: '🏠', label: 'Übersicht' },
     ]},
-    { label: 'Projekte & Kunden', items: [
-      { tab: 'angebote', icon: '📨', label: 'Angebote' },
-      { tab: 'aufmass',  icon: '📐', label: 'Aufmaß' },
-      { tab: 'projects', icon: '📁', label: 'Projekte' },
-      { tab: 'kunden',   icon: '🏢', label: 'Kunden & WE' },
-      { tab: 'archiv',   icon: '🗃', label: 'Archiv' },
+    { label: 'Planung & Zeit', items: [
+      { tab: 'calendar',  icon: '📅', label: 'Terminplan & Einteilung' },
+      { tab: 'employees', icon: '👥', label: 'Mitarbeiter & Stundensätze' },
+      { tab: 'wochen',    icon: '⏱',  label: 'Stunden & Auswertung' },
     ]},
-    { label: 'Einsatz', items: [
-      { tab: 'calendar',  icon: '📅', label: 'Kalender' },
-      { tab: 'reports',   icon: '📋', label: 'Berichte' },
-      { tab: 'maengel',   icon: '⚠',  label: 'Mängel' },
-      { tab: 'employees', icon: '👥', label: 'Mitarbeiter' },
-      { tab: 'kolonnen',  icon: '🧑‍🤝‍🧑', label: 'Kolonnen' },
-    ]},
-    { label: 'Personal', items: [
-      { tab: 'tickets', icon: '🎫', label: 'Tickets' },
-      { tab: 'subcontractors', icon: '👷', label: 'Subunternehmer' },
-    ]},
-    { label: 'Einkauf', items: [
-      { tab: 'lv',       icon: '📋', label: 'Leistungsverzeichnisse' },
-      { tab: 'einkauf',  icon: '🛒', label: 'Einkauf & Lager' },
-    ]},
-    { label: 'Büro & Schnittstellen', items: [
-      { tab: 'buchhaltung', icon: '🔗', label: 'Buchhaltung & Schnittstellen' },
-      { tab: 'website',     icon: '🌐', label: 'Website-Baukasten' },
-    ]},
-    { label: 'Controlling', items: [
-      { tab: 'cockpit',    icon: '🎯', label: 'Cockpit' },
+    { label: 'Aufträge', items: [
+      { tab: 'angebote',   icon: '📨', label: 'Angebote & Kalkulation' },
+      { tab: 'projects',   icon: '📁', label: 'Aufträge' },
+      { tab: 'reports',    icon: '📋', label: 'Berichte' },
       { tab: 'rechnungen', icon: '🧾', label: 'Rechnungen' },
-      { tab: 'wochen',     icon: '📊', label: 'Auswertungen' },
-      { tab: 'settings',   icon: '⚙',  label: 'Einstellungen' },
+      { tab: 'kunden',     icon: '🏢', label: 'Kunden' },
+    ]},
+    { label: 'Material', items: [
+      { tab: 'einkauf',  icon: '🛒', label: 'Material, Lager & Bestellung' },
+    ]},
+    { label: 'Qualität', items: [
+      { tab: 'maengel',  icon: '⚠',  label: 'Mängel' },
+    ]},
+    { label: 'Mehr', items: [
+      { tab: 'archiv',   icon: '🗃', label: 'Archiv' },
+      { tab: 'settings', icon: '⚙',  label: 'Einstellungen' },
     ]},
   ];
 
@@ -9077,9 +9065,6 @@
       else if (currentTab === 'wochen') renderWochenTab();
       else if (currentTab === 'cockpit') renderControllingCockpit();
       else if (currentTab === 'angebote') renderAngeboteTab();
-      else if (currentTab === 'aufmass') renderAufmassTab();
-      else if (currentTab === 'buchhaltung') renderBuchhaltungTab();
-      else if (currentTab === 'website') renderWebsiteTab();
       else if (currentTab === 'maengel') renderMaengelOverview();
       else if (currentTab === 'tickets') renderTicketsTab();
       else if (currentTab === 'subcontractors') renderSubcontractorsTab();
@@ -9169,9 +9154,6 @@
       if (currentTab === 'wochen') return renderWochenTab();
       if (currentTab === 'cockpit') return renderControllingCockpit();
       if (currentTab === 'angebote') return renderAngeboteTab();
-      if (currentTab === 'aufmass') return renderAufmassTab();
-      if (currentTab === 'buchhaltung') return renderBuchhaltungTab();
-      if (currentTab === 'website') return renderWebsiteTab();
       if (currentTab === 'maengel') return renderMaengelOverview();
       if (currentTab === 'subcontractors') return renderSubcontractorsTab();
       if (currentTab === 'invoices') { currentTab = 'einkauf'; return renderEinkaufLagerTab(); }
@@ -16788,8 +16770,11 @@
       </div>
 
       <div class="section">
-        <h3>📊 Steuerberater-Export (Quartal)</h3>
-        <p style="font-size:12px; color:#666;">Erzeugt eine ZIP für Deinen Steuerberater mit Rechnungen, Bestellungen, Datev-CSV pro Quartal.</p>
+        <h3>📊 Steuerberater / DATEV</h3>
+        <label>E-Mail Steuerberater / Buchhaltung</label>
+        <input id="blSteuerberaterEmail" type="email" placeholder="kanzlei@steuerberater.de" value="${escapeHtml((state.betriebsleiter && state.betriebsleiter.steuerberaterEmail) || '')}">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px;font-size:13px;"><input type="checkbox" id="blDatevAuto" ${(state.betriebsleiter && state.betriebsleiter.datevAutoForward !== false) ? 'checked' : ''} style="width:auto;"> Rechnungen bei Erstellung automatisch an den Steuerberater weiterleiten</label>
+        <p style="font-size:12px; color:#666; margin-top:6px;">Jede fertige Rechnung wird als Beleg-CSV an diese Adresse gesendet. Zusätzlich Quartals-ZIP (Rechnungen, Bestellungen, DATEV-CSV):</p>
         <button class="secondary" onclick="openSteuerberaterExport()">📊 Q-Export erstellen</button>
       </div>
 
@@ -24579,6 +24564,8 @@
         ${proj.projectType !== 'WEM' && !order.writtenOffAt ? '<button class="success" onclick="openCreateInvoice(\''+proj.id+'\',\''+order.id+'\')">🧾 Rechnung</button>' : ''}
         ${!order.writtenOffAt && !order.completedAt ? '<button class="secondary" onclick="writeOffOrder(\''+proj.id+'\',\''+order.id+'\')" title="Auftrag abschreiben (z.B. wenn er mit einem anderen Auftrag mitberechnet wurde)">📝 Auftrag abschreiben</button>' : ''}
         <button class="secondary" onclick="openAufmassTool('${proj.id}','${order.id}')">📐 Aufmaß</button>
+        ${proj.projectType !== 'WEM' && !order.writtenOffAt ? '<button class="secondary" onclick="wfOrderVobToggle(\''+proj.id+'\',\''+order.id+'\','+(!order.vobAbschlag)+')" title="VOB-konforme kumulierende Abschlagsrechnungen für diesen Auftrag">'+(order.vobAbschlag?'✅ VOB-Abschläge an':'📑 VOB-Abschläge')+'</button>' : ''}
+        ${typeof wfAbschlagBarHtml === 'function' ? wfAbschlagBarHtml(proj.id, order.id) : ''}
         <button class="secondary" onclick="(function(){pushBack(()=>openOrderDetail('${proj.id}','${order.id}','suborders')); openSubOrderForm('${proj.id}','${order.id}');})()" title="Subunternehmer für dieses Gewerk beauftragen">👷 Sub beauftragen</button>
         <button class="success" onclick="exportOrderAsZip('${proj.id}','${order.id}')" title="Auftragsmappe-Export mit Auswahl-Dialog: ZIP-Archiv oder PDF-Mappe">📦 Auftrags-Export (ZIP/PDF)</button>
         <span style="flex:1;"></span>
@@ -25474,6 +25461,11 @@
     const qualEl = document.querySelector('input[name="blPdfQuality"]:checked');
     bl.pdfQuality = qualEl ? qualEl.value : 'high';
     bl.pdfFormat = document.getElementById('blPdfFormatJpeg')?.checked ? 'jpeg' : 'png';
+    // Steuerberater / DATEV-Weiterleitung
+    var stbEl = document.getElementById('blSteuerberaterEmail');
+    if (stbEl) bl.steuerberaterEmail = (stbEl.value || '').trim();
+    var autoEl = document.getElementById('blDatevAuto');
+    if (autoEl) bl.datevAutoForward = !!autoEl.checked;
     await saveState();
     alert('✅ Firmenprofil gespeichert');
     render();
@@ -35843,6 +35835,9 @@
     console.warn('[V6.5] Doppelte Rechnungsnummer erkannt, ergänzt: ' + num + '-' + i);
     return num + '-' + i;
   }
+  // Für Zusatzmodule (VOB-Abschlagsrechnung) global verfügbar machen
+  window.nextInvoiceNumber = nextInvoiceNumber;
+  window.ensureUniqueInvoiceNumber = ensureUniqueInvoiceNumber;
   // Sammelrechnung für WEM-Projekt — fasst alle Aufträge zusammen
   window.openCreateProjectInvoice = function(projId) {
     const proj = state.projects.find(p => p.id === projId);
@@ -35963,6 +35958,7 @@
       finalized: true
     };
     state.invoices.push(inv);
+    if (window.wfAutoForwardDatev) { try { window.wfAutoForwardDatev(inv); } catch(_e) {} }
     // V6.3: Stack erhalten — ESC vom PDF zurück zur Projektmappe (WEM-Sammelrechnung)
     try { window.pushBack(() => openProjectDetail(projId)); } catch(_e) {}
     closeModal({ keepStack: true });
@@ -36252,6 +36248,8 @@
     // V12.5: Rechnung SOFORT speichern (vorher fire-and-forget) — verhindert Datenverlust,
     // falls direkt nach dem Finalisieren etwas schiefgeht.
     await saveState();
+    // Automatische Weiterleitung an Steuerberater/DATEV (falls aktiviert)
+    if (window.wfAutoForwardDatev) { try { window.wfAutoForwardDatev(inv); } catch(_e) {} }
     // V6.3: Stack erhalten — ESC vom PDF zurück zum Auftrag
     try { window.pushBack(() => openOrderDetail(projId, orderId, 'info')); } catch(_e) {}
     closeModal({ keepStack: true });
@@ -40063,6 +40061,8 @@
         <div class="aging-cell ${aging.counts.days90>0?'alert':''}"><div class="lbl">61–90 Tage</div><div class="v">${fmtEUR(aging.buckets.days90)}</div><div class="s">${aging.counts.days90} Rechnung(en)</div></div>
         <div class="aging-cell ${aging.counts.over90>0?'alert':''}"><div class="lbl">> 90 Tage</div><div class="v">${fmtEUR(aging.buckets.over90)}</div><div class="s">${aging.counts.over90} Rechnung(en)</div></div>
       </div>
+
+      ${typeof _faelligPanelHtml === 'function' ? _faelligPanelHtml() : ''}
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin:10px 0;">
         <div style="background:var(--color-primary-soft); padding:10px; border-radius:5px;"><div style="font-size:11px; color:var(--color-text-subtle);">Anzahl (gefiltert)</div><div style="font-size:18px; font-weight:700; color:var(--color-text);">${list.length}${list.length !== all.length ? ' / ' + all.length : ''}</div></div>
@@ -55479,406 +55479,10 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
 </script>
 
 <!-- ============================================================
-     AUFMASS & RAUMPLAN — digitales Raum-Aufmaß (Modul 'aufmass')
-     2D-Grundriss + 3D-Vorschau (Canvas, ohne externe Libs),
-     Mengen (Boden/Wand/Decke/Umfang/Volumen), Übernahme ins Angebot.
-     Echtes LiDAR-Scannen ist im Browser nicht möglich (nur native iOS/
-     ARKit); AR-Messen per WebXR wird best-effort angeboten, wo unterstützt.
-     ============================================================ -->
-<script>
-(function () {
-  'use strict';
-  function S() { return window.state; }
-  function esc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s); }
-  function num(n, d) { return (typeof fmtNum === 'function') ? fmtNum(n, d == null ? 2 : d) : (Math.round((Number(n) || 0) * 100) / 100).toString(); }
-  function toast(m) { if (typeof mToast === 'function') mToast(m); }
-
-  // Eigener State-Key: state.aufmasse gehört dem Alt-Kalkulator (LV-Mengen).
-  // Dieses Raum-Modul speichert getrennt unter state.raumaufmasse.
-  function ensure() {
-    var st = S(); if (!st) return [];
-    if (!Array.isArray(st.raumaufmasse)) st.raumaufmasse = [];
-    return st.raumaufmasse;
-  }
-
-  // ---- Geometrie: Turtle (Wände mit Länge + Abbiegewinkel) → Eckpunkte ----
-  function roomPoints(room) {
-    var pts = [], x = 0, y = 0, h = 0; // h in Grad, 0 = +x
-    (room.walls || []).forEach(function (w) {
-      pts.push({ x: x, y: y });
-      var r = h * Math.PI / 180;
-      x += Math.cos(r) * (Number(w.len) || 0);
-      y += Math.sin(r) * (Number(w.len) || 0);
-      h -= (w.turn == null ? 90 : Number(w.turn)); // rechts = positiv
-    });
-    return pts;
-  }
-  function polyArea(pts) {
-    var a = 0;
-    for (var i = 0; i < pts.length; i++) {
-      var j = (i + 1) % pts.length;
-      a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-    }
-    return Math.abs(a) / 2;
-  }
-  function roomMetrics(room) {
-    var pts = roomPoints(room);
-    var floor = polyArea(pts);
-    var perimeter = (room.walls || []).reduce(function (s, w) { return s + (Number(w.len) || 0); }, 0);
-    var height = Number(room.height) || 0;
-    var wallGross = perimeter * height;
-    var openings = (room.openings || []).reduce(function (s, o) { return s + (Number(o.w) || 0) * (Number(o.h) || 0) * (Number(o.count) || 1); }, 0);
-    var wallNet = Math.max(0, wallGross - openings);
-    return { pts: pts, floor: floor, perimeter: perimeter, height: height, wallGross: wallGross, openings: openings, wallNet: wallNet, ceiling: floor, volume: floor * height };
-  }
-  function totals(auf) {
-    var t = { floor: 0, wallNet: 0, ceiling: 0, perimeter: 0, volume: 0, rooms: (auf.rooms || []).length };
-    (auf.rooms || []).forEach(function (r) {
-      var m = roomMetrics(r);
-      t.floor += m.floor; t.wallNet += m.wallNet; t.ceiling += m.ceiling; t.perimeter += m.perimeter; t.volume += m.volume;
-    });
-    return t;
-  }
-  window._afRoomMetrics = roomMetrics; // für Tests
-
-  // ---- 2D-Grundriss zeichnen ----
-  function draw2D(canvas, room) {
-    var m = roomMetrics(room), pts = m.pts;
-    var ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#f7fafc'; ctx.fillRect(0, 0, W, H);
-    if (pts.length < 2) return;
-    var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
-    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-    var pad = 34, sw = (maxX - minX) || 1, sh = (maxY - minY) || 1;
-    var sc = Math.min((W - 2 * pad) / sw, (H - 2 * pad) / sh);
-    function px(p) { return { x: pad + (p.x - minX) * sc, y: pad + (p.y - minY) * sc }; }
-    // Boden
-    ctx.beginPath();
-    pts.forEach(function (p, i) { var q = px(p); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
-    ctx.closePath(); ctx.fillStyle = 'rgba(63,207,127,0.12)'; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = '#16324e'; ctx.stroke();
-    // Wandmaße
-    ctx.fillStyle = '#1a3a5c'; ctx.font = '12px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.textAlign = 'center';
-    (room.walls || []).forEach(function (w, i) {
-      var a = px(pts[i]), b = px(pts[(i + 1) % pts.length]);
-      ctx.fillText(num(w.len, 2) + ' m', (a.x + b.x) / 2, (a.y + b.y) / 2 - 4);
-    });
-    // Fläche mittig
-    var cx = pts.reduce(function (s, p) { return s + px(p).x; }, 0) / pts.length;
-    var cy = pts.reduce(function (s, p) { return s + px(p).y; }, 0) / pts.length;
-    ctx.font = 'bold 14px -apple-system,Segoe UI,Roboto,sans-serif'; ctx.fillStyle = '#1e8449';
-    ctx.fillText(num(m.floor, 2) + ' m²', cx, cy);
-  }
-
-  // ---- 3D-Vorschau (isometrisch, extrudierte Wände) ----
-  function draw3D(canvas, room) {
-    var m = roomMetrics(room), pts = m.pts, hgt = m.height || 2.5;
-    var ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#eef3f8'; ctx.fillRect(0, 0, W, H);
-    if (pts.length < 3) return;
-    var cos = Math.cos(Math.PI / 6), sin = Math.sin(Math.PI / 6);
-    function iso(x, y, z) { return { x: (x - y) * cos, y: (x + y) * sin - z }; }
-    // Bounding box im ISO-Raum (inkl. Höhe)
-    var all = [];
-    pts.forEach(function (p) { all.push(iso(p.x, p.y, 0)); all.push(iso(p.x, p.y, hgt)); });
-    var xs = all.map(function (p) { return p.x; }), ys = all.map(function (p) { return p.y; });
-    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-    var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-    var pad = 24, sc = Math.min((W - 2 * pad) / ((maxX - minX) || 1), (H - 2 * pad) / ((maxY - minY) || 1));
-    function sp(x, y, z) { var p = iso(x, y, z); return { x: pad + (p.x - minX) * sc, y: pad + (p.y - minY) * sc }; }
-    // Boden
-    ctx.beginPath();
-    pts.forEach(function (p, i) { var q = sp(p.x, p.y, 0); if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); });
-    ctx.closePath(); ctx.fillStyle = 'rgba(26,58,92,0.10)'; ctx.fill(); ctx.strokeStyle = '#9db4c9'; ctx.lineWidth = 1; ctx.stroke();
-    // Wände (hinten zuerst) — nach mittlerer Tiefe sortieren
-    var edges = [];
-    for (var i = 0; i < pts.length; i++) {
-      var a = pts[i], b = pts[(i + 1) % pts.length];
-      edges.push({ a: a, b: b, depth: (a.x + a.y + b.x + b.y) / 4 });
-    }
-    edges.sort(function (e1, e2) { return e1.depth - e2.depth; });
-    edges.forEach(function (e) {
-      var p1 = sp(e.a.x, e.a.y, 0), p2 = sp(e.b.x, e.b.y, 0), p3 = sp(e.b.x, e.b.y, hgt), p4 = sp(e.a.x, e.a.y, hgt);
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath();
-      ctx.fillStyle = 'rgba(42,80,128,' + (0.28 + 0.22 * ((e.depth - minX) / ((maxX - minX) || 1))) + ')';
-      ctx.fill(); ctx.strokeStyle = '#16324e'; ctx.lineWidth = 1.2; ctx.stroke();
-    });
-  }
-
-  function drawRoomCanvases(room) {
-    setTimeout(function () {
-      var c2 = document.getElementById('af2d_' + room.id); if (c2) { try { draw2D(c2, room); } catch (e) {} }
-      var c3 = document.getElementById('af3d_' + room.id); if (c3) { try { draw3D(c3, room); } catch (e) {} }
-    }, 30);
-  }
-
-  // ---- Übersicht: Liste der Aufmaße ----
-  window.renderAufmassTab = function () {
-    var main = document.getElementById('mainContent'); if (!main) return;
-    var list = ensure().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-    var guest = (typeof isGuest === 'function' && isGuest());
-    var html = '<h2 style="margin-bottom:6px;">📐 Aufmaß &amp; Raumplan</h2>' +
-      '<div class="help">Raum für Raum digital aufmessen: Maße eingeben, werkflow berechnet Boden-, Wand- und Deckenflächen und zeigt Grundriss + 3D-Vorschau. Die Mengen lassen sich direkt ins Angebot übernehmen.</div>' +
-      '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:12.5px;color:#8a6d1a;margin:10px 0;">ℹ️ <b>LiDAR-Hinweis:</b> Echtes LiDAR-Raumscannen (wie magicplan) benötigt eine native iOS-App und ist im Browser technisch nicht möglich. Dieses Modul erfasst das Aufmaß digital per Eingabe (Rechteck-Schnellerfassung oder Wand-für-Wand). Auf unterstützten Android-Geräten kannst du zusätzlich per <b>AR-Messen (Beta)</b> Strecken abgreifen.</div>';
-    if (!guest) html += '<button class="success" onclick="afNewAufmass()">+ Neues Aufmaß</button>';
-    html += '<div style="margin-top:14px;">';
-    if (!list.length) html += '<div style="padding:26px;text-align:center;color:#889;">Noch kein Aufmaß angelegt.</div>';
-    list.forEach(function (a) {
-      var t = totals(a);
-      html += '<div class="card" style="cursor:pointer;padding:14px;margin-bottom:8px;" onclick="afOpen(\'' + a.id + '\')">' +
-        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
-        '<div><b style="font-size:15px;">' + esc(a.name) + '</b>' + (a.kundeName ? ' <span style="color:#789;">· ' + esc(a.kundeName) + '</span>' : '') + '<br>' +
-        '<span style="color:#789;font-size:12px;">' + t.rooms + ' Raum/Räume · Boden ' + num(t.floor, 1) + ' m² · Wand ' + num(t.wallNet, 1) + ' m²</span></div>' +
-        '<div style="color:#1e8449;font-weight:700;font-size:15px;">' + num(t.floor, 1) + ' m²</div>' +
-        '</div></div>';
-    });
-    html += '</div>';
-    main.innerHTML = html;
-  };
-
-  window.afNewAufmass = function () {
-    var kunden = (S().kunden || []).slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
-    var opts = '<option value="">— optional —</option>' + kunden.map(function (k) { return '<option value="' + k.id + '">' + esc(k.name) + '</option>'; }).join('');
-    showModal('<h2>📐 Neues Aufmaß</h2>' +
-      '<label>Bezeichnung *</label><input id="afName" placeholder="z. B. Wohnung Müller, EG">' +
-      '<label>Kunde (optional)</label><select id="afKunde">' + opts + '</select>' +
-      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
-      '<button class="success" onclick="afCreate()">Anlegen</button></div>');
-  };
-  window.afCreate = function () {
-    var name = (document.getElementById('afName').value || '').trim();
-    if (!name) { alert('Bitte Bezeichnung eingeben.'); return; }
-    var kSel = document.getElementById('afKunde'); var kId = kSel.value || '';
-    var kName = kId ? (S().kunden.find(function (k) { return k.id === kId; }) || {}).name || '' : '';
-    var a = { id: (typeof uid === 'function' ? uid('af') : 'af_' + Date.now()), name: name, kundeId: kId, kundeName: kName, rooms: [], createdAt: Date.now() };
-    ensure().push(a);
-    if (typeof saveState === 'function') saveState();
-    if (typeof closeModal === 'function') closeModal();
-    afOpen(a.id);
-  };
-  window.afDelete = function (id) {
-    if (!confirm('Aufmaß wirklich löschen?')) return;
-    S().raumaufmasse = ensure().filter(function (a) { return a.id !== id; });
-    if (typeof saveState === 'function') saveState();
-    renderAufmassTab();
-  };
-
-  function getAuf(id) { return ensure().find(function (a) { return a.id === id; }); }
-
-  // ---- Detail: Räume + Mengen + Canvas ----
-  window.afOpen = function (id) {
-    var a = getAuf(id); if (!a) return renderAufmassTab();
-    var main = document.getElementById('mainContent'); if (!main) return;
-    var t = totals(a);
-    var guest = (typeof isGuest === 'function' && isGuest());
-    var canAngebot = (typeof openAngebotDetail === 'function') && (typeof isModuleEnabled !== 'function' || isModuleEnabled('angebote'));
-    var html = '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
-      '<h2>📐 ' + esc(a.name) + (a.kundeName ? ' <span style="color:#789;font-weight:400;font-size:15px;">· ' + esc(a.kundeName) + '</span>' : '') + '</h2>' +
-      '<button class="secondary small" onclick="switchTab(\'aufmass\')">← Übersicht</button></div>';
-    // Gesamt-Mengen
-    html += '<div class="kpi-strip" style="margin:8px 0 14px;">' +
-      afKpi('🟩 Bodenfläche', num(t.floor, 2) + ' m²') +
-      afKpi('🧱 Wandfläche (netto)', num(t.wallNet, 2) + ' m²') +
-      afKpi('⬜ Deckenfläche', num(t.ceiling, 2) + ' m²') +
-      afKpi('📦 Volumen', num(t.volume, 2) + ' m³') + '</div>';
-    if (!guest) html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
-      '<button class="success" onclick="afAddRect(\'' + a.id + '\')">+ Raum (Rechteck)</button>' +
-      '<button class="secondary" onclick="afAddCustom(\'' + a.id + '\')">+ Raum (Wände einzeln)</button>' +
-      '<button class="secondary" onclick="afStartAR(\'' + a.id + '\')">📱 AR-Messen (Beta)</button>' +
-      (canAngebot ? '<button class="primary-action" style="background:#1a3a5c;color:#fff;border:none;padding:7px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="afToAngebot(\'' + a.id + '\')">📨 In Angebot übernehmen</button>' : '') +
-      '<span style="flex:1;"></span><button class="danger small" onclick="afDelete(\'' + a.id + '\')">Aufmaß löschen</button></div>';
-    // Räume
-    if (!(a.rooms || []).length) html += '<div style="padding:20px;text-align:center;color:#889;">Noch kein Raum — füge oben einen Raum hinzu.</div>';
-    (a.rooms || []).forEach(function (room) {
-      var m = roomMetrics(room);
-      html += '<div class="card" style="padding:14px;margin-bottom:12px;">' +
-        '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;">' +
-        '<b style="font-size:15px;">🚪 ' + esc(room.name) + '</b>' +
-        (guest ? '' : '<div style="display:flex;gap:6px;"><button class="secondary small" onclick="afEditRoom(\'' + a.id + '\',\'' + room.id + '\')">✎ Maße</button>' +
-          '<button class="danger small" onclick="afDelRoom(\'' + a.id + '\',\'' + room.id + '\')">✕</button></div>') + '</div>' +
-        '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">' +
-        '<canvas id="af2d_' + room.id + '" width="340" height="230" style="background:#f7fafc;border:1px solid #e3e9ef;border-radius:8px;max-width:100%;"></canvas>' +
-        '<canvas id="af3d_' + room.id + '" width="340" height="230" style="background:#eef3f8;border:1px solid #e3e9ef;border-radius:8px;max-width:100%;"></canvas>' +
-        '<div style="min-width:190px;font-size:13px;">' +
-        afRow('Höhe', num(m.height, 2) + ' m') + afRow('Umfang', num(m.perimeter, 2) + ' m') +
-        afRow('Bodenfläche', num(m.floor, 2) + ' m²') + afRow('Wand brutto', num(m.wallGross, 2) + ' m²') +
-        afRow('− Öffnungen', num(m.openings, 2) + ' m²') + afRow('<b>Wand netto</b>', '<b>' + num(m.wallNet, 2) + ' m²</b>') +
-        afRow('Decke', num(m.ceiling, 2) + ' m²') + afRow('Volumen', num(m.volume, 2) + ' m³') +
-        '</div></div></div>';
-    });
-    main.innerHTML = html;
-    (a.rooms || []).forEach(drawRoomCanvases);
-  };
-  function afKpi(l, v) { return '<div class="kpi-card accent-success"><div class="label">' + l + '</div><div class="value">' + v + '</div></div>'; }
-  function afRow(l, v) { return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #f0f2f5;"><span style="color:#667;">' + l + '</span><span>' + v + '</span></div>'; }
-
-  // ---- Raum anlegen: Rechteck-Schnellerfassung ----
-  window.afAddRect = function (aufId) {
-    showModal('<h2>+ Raum (Rechteck)</h2>' +
-      '<label>Raumname *</label><input id="rName" placeholder="z. B. Wohnzimmer">' +
-      '<div class="row3"><div><label>Länge (m) *</label><input type="number" id="rL" step="0.01" min="0" value="4.00"></div>' +
-      '<div><label>Breite (m) *</label><input type="number" id="rB" step="0.01" min="0" value="3.00"></div>' +
-      '<div><label>Höhe (m) *</label><input type="number" id="rH" step="0.01" min="0" value="2.50"></div></div>' +
-      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
-      '<button class="success" onclick="afCreateRect(\'' + aufId + '\')">Anlegen</button></div>');
-  };
-  window.afCreateRect = function (aufId) {
-    var a = getAuf(aufId); if (!a) return;
-    var name = (document.getElementById('rName').value || '').trim() || 'Raum';
-    var L = Number(document.getElementById('rL').value) || 0, B = Number(document.getElementById('rB').value) || 0, Hh = Number(document.getElementById('rH').value) || 0;
-    if (L <= 0 || B <= 0) { alert('Länge und Breite müssen > 0 sein.'); return; }
-    a.rooms = a.rooms || [];
-    a.rooms.push({ id: (typeof uid === 'function' ? uid('rm') : 'rm_' + Date.now()), name: name, height: Hh, rect: { L: L, B: B },
-      walls: [{ len: L, turn: 90 }, { len: B, turn: 90 }, { len: L, turn: 90 }, { len: B, turn: 90 }], openings: [] });
-    if (typeof saveState === 'function') saveState();
-    if (typeof closeModal === 'function') closeModal();
-    afOpen(aufId);
-  };
-
-  // ---- Raum anlegen: Wände einzeln ----
-  window.afAddCustom = function (aufId) {
-    var a = getAuf(aufId); if (!a) return;
-    a.rooms = a.rooms || [];
-    var room = { id: (typeof uid === 'function' ? uid('rm') : 'rm_' + Date.now()), name: 'Raum ' + (a.rooms.length + 1), height: 2.50, walls: [{ len: 4, turn: 90 }, { len: 3, turn: 90 }, { len: 4, turn: 90 }, { len: 3, turn: 90 }], openings: [] };
-    a.rooms.push(room);
-    if (typeof saveState === 'function') saveState();
-    afOpen(aufId);
-    afEditRoom(aufId, room.id);
-  };
-
-  window.afDelRoom = function (aufId, roomId) {
-    if (!confirm('Raum löschen?')) return;
-    var a = getAuf(aufId); if (!a) return;
-    a.rooms = (a.rooms || []).filter(function (r) { return r.id !== roomId; });
-    if (typeof saveState === 'function') saveState();
-    afOpen(aufId);
-  };
-
-  // ---- Raum-Editor (Maße, Wände, Öffnungen) ----
-  window.afEditRoom = function (aufId, roomId) {
-    var a = getAuf(aufId); if (!a) return;
-    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
-    var wallsHtml = (room.walls || []).map(function (w, i) {
-      return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">' +
-        '<span style="width:52px;color:#667;font-size:12px;">Wand ' + (i + 1) + '</span>' +
-        '<input type="number" step="0.01" min="0" value="' + (w.len || 0) + '" id="rw_' + i + '" style="width:90px;" placeholder="Länge m">' +
-        '<span style="font-size:12px;color:#889;">m, abbiegen</span>' +
-        '<input type="number" step="1" value="' + (w.turn == null ? 90 : w.turn) + '" id="rt_' + i + '" style="width:70px;" title="Winkel in Grad (90 = rechter Winkel, negativ = links)">' +
-        '<span style="font-size:12px;color:#889;">°</span>' +
-        '<button class="danger small" onclick="afRemWall(\'' + aufId + '\',\'' + roomId + '\',' + i + ')">✕</button></div>';
-    }).join('');
-    var opHtml = (room.openings || []).map(function (o, i) {
-      return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">' +
-        '<select id="ro_t_' + i + '" style="width:90px;"><option value="door"' + (o.type === 'door' ? ' selected' : '') + '>Tür</option><option value="window"' + (o.type === 'window' ? ' selected' : '') + '>Fenster</option></select>' +
-        '<input type="number" step="0.01" value="' + (o.w || 0) + '" id="ro_w_' + i + '" style="width:70px;" placeholder="Breite"> ×' +
-        '<input type="number" step="0.01" value="' + (o.h || 0) + '" id="ro_h_' + i + '" style="width:70px;" placeholder="Höhe"> m, ×' +
-        '<input type="number" step="1" min="1" value="' + (o.count || 1) + '" id="ro_c_' + i + '" style="width:52px;">' +
-        '<button class="danger small" onclick="afRemOpening(\'' + aufId + '\',\'' + roomId + '\',' + i + ')">✕</button></div>';
-    }).join('');
-    showModal('<h2>✎ ' + esc(room.name) + ' — Maße</h2>' +
-      '<div class="row2"><div><label>Raumname</label><input id="reName" value="' + esc(room.name) + '"></div>' +
-      '<div><label>Raumhöhe (m)</label><input type="number" step="0.01" min="0" id="reH" value="' + (room.height || 0) + '"></div></div>' +
-      '<h3 style="margin:12px 0 6px;font-size:14px;">Wände (Länge + Abbiegewinkel)</h3>' +
-      '<div id="reWalls">' + wallsHtml + '</div>' +
-      '<button class="secondary small" onclick="afAddWall(\'' + aufId + '\',\'' + roomId + '\')">+ Wand</button>' +
-      '<h3 style="margin:14px 0 6px;font-size:14px;">Öffnungen (werden von der Wandfläche abgezogen)</h3>' +
-      '<div id="reOps">' + (opHtml || '<div style="color:#889;font-size:12px;">keine</div>') + '</div>' +
-      '<button class="secondary small" onclick="afAddOpening(\'' + aufId + '\',\'' + roomId + '\')">+ Öffnung</button>' +
-      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
-      '<button class="success" onclick="afSaveRoom(\'' + aufId + '\',\'' + roomId + '\')">Speichern</button></div>', 'wide');
-  };
-  function readEditor(room) {
-    room.name = (document.getElementById('reName').value || '').trim() || room.name;
-    room.height = Number(document.getElementById('reH').value) || 0;
-    var walls = [];
-    (room.walls || []).forEach(function (w, i) {
-      var l = document.getElementById('rw_' + i), tn = document.getElementById('rt_' + i);
-      if (l) walls.push({ len: Number(l.value) || 0, turn: tn ? (Number(tn.value) || 0) : 90 });
-    });
-    room.walls = walls;
-    var ops = [];
-    (room.openings || []).forEach(function (o, i) {
-      var tt = document.getElementById('ro_t_' + i);
-      if (!tt) return;
-      ops.push({ type: tt.value, w: Number((document.getElementById('ro_w_' + i) || {}).value) || 0, h: Number((document.getElementById('ro_h_' + i) || {}).value) || 0, count: Number((document.getElementById('ro_c_' + i) || {}).value) || 1 });
-    });
-    room.openings = ops;
-    if (room.rect) delete room.rect;
-  }
-  window.afSaveRoom = function (aufId, roomId) {
-    var a = getAuf(aufId); if (!a) return;
-    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
-    readEditor(room);
-    if (typeof saveState === 'function') saveState();
-    if (typeof closeModal === 'function') closeModal();
-    afOpen(aufId);
-  };
-  function afMutRoom(aufId, roomId, fn) {
-    var a = getAuf(aufId); if (!a) return;
-    var room = (a.rooms || []).find(function (r) { return r.id === roomId; }); if (!room) return;
-    readEditor(room); fn(room);
-    if (typeof saveState === 'function') saveState();
-    afEditRoom(aufId, roomId);
-  }
-  window.afAddWall = function (aufId, roomId) { afMutRoom(aufId, roomId, function (r) { r.walls.push({ len: 2, turn: 90 }); }); };
-  window.afRemWall = function (aufId, roomId, i) { afMutRoom(aufId, roomId, function (r) { r.walls.splice(i, 1); }); };
-  window.afAddOpening = function (aufId, roomId) { afMutRoom(aufId, roomId, function (r) { r.openings = r.openings || []; r.openings.push({ type: 'door', w: 0.9, h: 2.0, count: 1 }); }); };
-  window.afRemOpening = function (aufId, roomId, i) { afMutRoom(aufId, roomId, function (r) { r.openings.splice(i, 1); }); };
-
-  // ---- Übernahme ins Angebot ----
-  window.afToAngebot = function (aufId) {
-    var a = getAuf(aufId); if (!a) return;
-    if (typeof openAngebotDetail !== 'function') { toast('Angebots-Modul nicht aktiv.'); return; }
-    if (!(a.rooms || []).length) { alert('Kein Raum vorhanden.'); return; }
-    if (!Array.isArray(S().angebote)) S().angebote = [];
-    var items = [], nr = 1;
-    (a.rooms || []).forEach(function (room) {
-      var m = roomMetrics(room);
-      items.push({ isHeader: true, name: room.name });
-      items.push({ nr: nr++, name: 'Bodenfläche ' + room.name, qty: Math.round(m.floor * 100) / 100, unit: 'm²', price: 0 });
-      items.push({ nr: nr++, name: 'Wandfläche (netto) ' + room.name, qty: Math.round(m.wallNet * 100) / 100, unit: 'm²', price: 0 });
-      items.push({ nr: nr++, name: 'Deckenfläche ' + room.name, qty: Math.round(m.ceiling * 100) / 100, unit: 'm²', price: 0 });
-    });
-    var number = (typeof nextAngebotNumber === 'function') ? nextAngebotNumber() : ('AN-' + Date.now());
-    if (S().angebotSettings) S().angebotSettings.nextNumber = (S().angebotSettings.nextNumber || 1) + 1;
-    var today = new Date().toISOString().slice(0, 10);
-    var ang = {
-      id: (typeof uid === 'function' ? uid('ang') : 'ang_' + Date.now()), number: number,
-      title: 'Aufmaß ' + a.name, date: today, validUntil: today, status: 'draft',
-      kundeId: a.kundeId || '', kundeSnapshot: { name: a.kundeName || '' },
-      vatRate: (S().invoiceSettings && S().invoiceSettings.vatRate) || 19, totalDiscount: 0,
-      items: items, net: 0, ust: 0, gross: 0,
-      description: 'Automatisch aus Aufmaß „' + a.name + '" erstellt. Preise noch einzutragen.', notes: '', fromAufmassId: a.id
-    };
-    S().angebote.push(ang);
-    if (typeof saveState === 'function') saveState();
-    toast('✓ Angebot ' + number + ' aus Aufmaß erstellt — bitte Preise ergänzen.');
-    if (typeof switchTab === 'function') switchTab('angebote');
-    setTimeout(function () { try { openAngebotDetail(ang.id); } catch (e) {} }, 60);
-  };
-
-  // ---- AR-Messen (Beta) — best effort über WebXR, sonst ehrlicher Hinweis ----
-  window.afStartAR = function () {
-    if (!navigator.xr || !navigator.xr.isSessionSupported) {
-      alert('AR-Messen wird von diesem Gerät/Browser nicht unterstützt.\n\nAuf dem iPhone unterstützt Safari kein Web-AR — dort bitte die Maße per Eingabe erfassen. Für echtes LiDAR-Scannen ist eine native App nötig (Roadmap).');
-      return;
-    }
-    navigator.xr.isSessionSupported('immersive-ar').then(function (ok) {
-      if (!ok) { alert('Dieses Gerät unterstützt kein Web-AR (immersive-ar).\nBitte Maße per Eingabe erfassen.'); return; }
-      alert('AR-Messen (Beta): Diese Vorschau startet eine AR-Sitzung zum Abgreifen von Strecken. Vollständige Integration ins Aufmaß folgt. Für den produktiven Einsatz empfehlen wir aktuell die Eingabe der Maße.');
-    }).catch(function () {
-      alert('AR-Messen konnte nicht gestartet werden. Bitte Maße per Eingabe erfassen.');
-    });
-  };
-})();
-</script>
-
-<!-- ============================================================
-     BUCHHALTUNG & SCHNITTSTELLEN + WEBSITE-BAUKASTEN (Client)
-     Bedient die Server-Endpunkte /api/t/* (DATEV, Lexoffice, Bank,
-     E-Rechnung, Händler-Katalog, E-Mail, Website-Generator).
-     Ohne Server (Demo/GitHub Pages) sauberer Hinweis statt Fehler.
+     RECHNUNGS-WORKFLOW (schlank): Fälligkeit & Mahnung, DATEV-
+     Weiterleitung, VOB-kumulierende Abschlagsrechnung mit Aufmaßliste.
+     Baut auf vorhandenen Funktionen auf (generateMahnungPdf,
+     markInvoicePaid, exportInvoicePDF, nextInvoiceNumber).
      ============================================================ -->
 <script>
 (function () {
@@ -55886,564 +55490,205 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
   function S() { return window.state || {}; }
   function esc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s); }
   function eur(n) { return (typeof fmtEUR === 'function') ? fmtEUR(n) : ((Math.round((+n || 0) * 100) / 100).toFixed(2) + ' €'); }
-  function num(n, d) { return (typeof fmtNum === 'function') ? fmtNum(n, d == null ? 2 : d) : String(n); }
   function toast(m) { if (typeof mToast === 'function') mToast(m); else alert(m); }
-  function guest() { return (typeof isGuest === 'function' && isGuest()); }
+  function today0() { return Date.now(); }
+  function dOverdue(inv) { var due = dueTs(inv); return due ? Math.floor((today0() - due) / 86400000) : 0; }
+  function dueTs(inv) { return inv.dueDate ? new Date(inv.dueDate).getTime() : (inv.date ? new Date(inv.date).getTime() + 14 * 86400000 : null); }
+  function mahnstufe(inv) {
+    var due = dueTs(inv); if (!due || due > today0()) return -1;
+    var d = Math.floor((today0() - due) / 86400000);
+    if (d <= 14) return 0; if (d <= 30) return 1; if (d <= 60) return 2; return 3;
+  }
 
+  // ---- Fällig & Mahnungen: Panel oben in den Rechnungen ----
+  window._faelligPanelHtml = function () {
+    var invs = (S().invoices || []).filter(function (i) { return i.type !== 'gutschrift' && !i.paidAt; });
+    var due = invs.map(function (i) { return { inv: i, st: mahnstufe(i), d: dOverdue(i) }; }).filter(function (x) { return x.st >= 0; });
+    due.sort(function (a, b) { return b.st - a.st || b.d - a.d; });
+    if (!due.length) return '<div style="background:#eef7f0;border:1px solid #cfe8d6;border-radius:8px;padding:10px 12px;margin:10px 0;font-size:13px;color:#2e7d46;">✓ Keine fälligen offenen Rechnungen — alles im grünen Bereich.</div>';
+    var stbSet = !!(S().betriebsleiter && S().betriebsleiter.steuerberaterEmail);
+    var labels = ['📍 Fällig', '⚠ 1. Mahnung', '⚠⚠ 2. Mahnung', '🚨 3. Mahnung'];
+    var colors = ['#3498db', '#e67e22', '#c0392b', '#7d1f1f'];
+    var rows = due.map(function (x) {
+      var i = x.inv, k = i.kundeSnapshot || {};
+      var stufe = Math.max(1, x.st); // Fällig → 1. (Zahlungserinnerung)
+      return '<tr style="border-bottom:1px solid #eee;">' +
+        '<td style="padding:6px;"><span style="background:' + colors[x.st] + ';color:#fff;padding:2px 6px;border-radius:3px;font-size:11px;font-weight:700;">' + labels[x.st] + '</span></td>' +
+        '<td style="padding:6px;"><b>' + esc(i.number || '?') + '</b></td>' +
+        '<td style="padding:6px;">' + esc(k.name || '–') + '</td>' +
+        '<td style="padding:6px;text-align:right;font-weight:600;">' + eur(i.gross || 0) + '</td>' +
+        '<td style="padding:6px;text-align:right;color:' + colors[x.st] + ';font-weight:700;">' + (x.d > 0 ? x.d + ' Tg.' : 'heute') + '</td>' +
+        '<td style="padding:6px;white-space:nowrap;text-align:right;">' +
+        '<button class="secondary small" onclick="wfInvoicePaid(\'' + i.id + '\')">✓ Zahlung eingegangen</button> ' +
+        '<button class="secondary small" onclick="generateMahnungPdf(\'' + i.id + '\',' + stufe + ')">📄 Mahnung vorbereiten</button>' +
+        (stbSet ? ' <button class="secondary small" onclick="wfForwardDatev(\'' + i.id + '\')" title="An Steuerberater/DATEV senden">📧 DATEV</button>' : '') +
+        '</td></tr>';
+    }).join('');
+    return '<div style="border:1px solid #f0d68c;background:#fffdf5;border-radius:10px;padding:12px 14px;margin:12px 0;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+      '<b style="font-size:15px;">🔔 Fällige Rechnungen &amp; Mahnungen (' + due.length + ')</b>' +
+      '<span style="font-size:12px;color:#8a6d1a;">Zahlung da? → „Zahlung eingegangen". Wenn nein → „Mahnung vorbereiten".</span></div>' +
+      '<div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+      '<thead><tr style="background:#f7f2e0;"><th style="padding:6px;text-align:left;">Stufe</th><th style="padding:6px;text-align:left;">Nr.</th><th style="padding:6px;text-align:left;">Kunde</th><th style="padding:6px;text-align:right;">Brutto</th><th style="padding:6px;text-align:right;">überfällig</th><th style="padding:6px;"></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></div>';
+  };
+
+  window.wfInvoicePaid = function (id) {
+    if (typeof markInvoicePaid === 'function') markInvoicePaid(id);
+    if (typeof switchTab === 'function') switchTab('rechnungen');
+  };
+
+  // ---- DATEV/Steuerberater-Weiterleitung ----
   function srv() { return S().serverConfig || {}; }
   function online() { return !!srv().apiUrl; }
-  function hdrs(extra) {
-    var c = srv(), h = Object.assign({}, extra || {});
-    if (c.tenantKey) h['X-Tenant-Key'] = c.tenantKey;
-    if (c.auth === 'apikey' && c.apiKey) h['Authorization'] = 'Bearer ' + c.apiKey;
-    return h;
+  function hdrs() { var c = srv(), h = { 'Content-Type': 'application/json' }; if (c.tenantKey) h['X-Tenant-Key'] = c.tenantKey; if (c.auth === 'apikey' && c.apiKey) h['Authorization'] = 'Bearer ' + c.apiKey; return h; }
+  function invoiceCsv(inv) {
+    var k = inv.kundeSnapshot || {};
+    var head = 'Rechnungsnummer;Datum;Kunde;Netto;USt;Brutto\n';
+    var row = [inv.number, (inv.date || '').slice(0, 10), (k.name || ''), inv.net, inv.ust, inv.gross].map(function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }).join(';');
+    return head + row + '\n';
   }
-  function opts() { return srv().auth === 'windows' ? { credentials: 'include' } : {}; }
-
-  // Authentifizierter JSON-Aufruf gegen /api/t + <path>
-  function apiJson(path, method, body) {
-    if (!online()) return Promise.resolve({ offline: true, status: 0 });
-    var o = Object.assign({ method: method || 'GET', headers: hdrs({ 'Content-Type': 'application/json' }) }, opts());
-    if (body !== undefined) o.body = JSON.stringify(body);
-    return fetch(srv().apiUrl + path, o).then(parseRes);
+  window.wfForwardDatev = function (id) {
+    var inv = (S().invoices || []).find(function (i) { return i.id === id; }); if (!inv) return;
+    var to = (S().betriebsleiter && S().betriebsleiter.steuerberaterEmail) || '';
+    if (!to) { alert('Bitte zuerst die Steuerberater/DATEV-E-Mail in den Einstellungen hinterlegen.'); return; }
+    var k = inv.kundeSnapshot || {};
+    var subject = 'Rechnung ' + (inv.number || '') + ' zur Buchhaltung';
+    var text = 'Automatische Weiterleitung durch werkflow.\n\nRechnung: ' + (inv.number || '') + '\nDatum: ' + (inv.date || '') + '\nKunde: ' + (k.name || '') + '\nNetto: ' + eur(inv.net) + '\nUSt: ' + eur(inv.ust) + '\nBrutto: ' + eur(inv.gross);
+    if (online()) {
+      var body = { to: to, subject: subject, text: text, kind: 'datev',
+        attachments: [{ filename: 'Rechnung_' + (inv.number || 'RE') + '.csv', contentType: 'text/csv', contentBase64: btoa(unescape(encodeURIComponent(invoiceCsv(inv)))) }] };
+      fetch(srv().apiUrl + '/mail/send', { method: 'POST', headers: hdrs(), body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ok) toast('✓ Rechnung an Steuerberater gesendet (' + to + ').');
+        else if (d && d.configured === false) fallbackMail(to, subject, text);
+        else toast('Versand fehlgeschlagen (' + ((d && d.error) || '?') + ').');
+      }).catch(function () { fallbackMail(to, subject, text); });
+    } else fallbackMail(to, subject, text);
+  };
+  function fallbackMail(to, subject, text) {
+    if (typeof composeMail === 'function') composeMail(to, subject, text);
+    else window.location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
   }
-  function apiRaw(path, buf, ctype) {
-    if (!online()) return Promise.resolve({ offline: true, status: 0 });
-    var o = Object.assign({ method: 'POST', headers: hdrs({ 'Content-Type': ctype || 'application/octet-stream' }), body: buf }, opts());
-    return fetch(srv().apiUrl + path, o).then(parseRes);
-  }
-  function apiBlob(path, body) {
-    var o = Object.assign({ method: 'POST', headers: hdrs({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) }, opts());
-    return fetch(srv().apiUrl + path, o);
-  }
-  function parseRes(r) { return r.text().then(function (t) { var d; try { d = JSON.parse(t); } catch (e) { d = t; } return { status: r.status, data: d }; }); }
-  function offlineMsg() { toast('Diese Funktion braucht den werkflow-Server (nicht in der GitHub-Demo verfügbar).'); }
-
-  function readFile(file) {
-    return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(new Uint8Array(fr.result)); }; fr.onerror = rej; fr.readAsArrayBuffer(file); });
-  }
-  function download(filename, text, mime) {
-    var blob = (text instanceof Blob) ? text : new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
-    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-  }
-  function card(title, inner) {
-    return '<div class="card" style="padding:16px;margin-bottom:14px;"><h3 style="margin:0 0 10px;font-size:16px;">' + title + '</h3>' + inner + '</div>';
-  }
-
-  // ======================= BUCHHALTUNG & SCHNITTSTELLEN =======================
-  var _inbox = [];
-  window.renderBuchhaltungTab = function () {
-    var main = document.getElementById('mainContent'); if (!main) return;
-    var html = '<h2 style="margin-bottom:6px;">🔗 Buchhaltung &amp; Schnittstellen</h2>' +
-      '<div class="help">Verbinde werkflow mit DATEV, Lexoffice, deiner Bank und den Großhandels-Portalen. Rechnungen &amp; Angebote per E-Mail versenden, Eingangsrechnungen automatisch einlesen, Zahlungen abgleichen.</div>';
-    if (!online()) html += '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:13px;color:#8a6d1a;margin:10px 0;">ℹ️ <b>Server nötig:</b> Die Schnittstellen laufen auf dem werkflow-Server (IONOS/VPS). In der öffentlichen GitHub-Demo sind sie deaktiviert.</div>';
-
-    html += '<div id="bhInboxBox"></div>';
-
-    // DATEV
-    html += card('📗 DATEV — Export für den Steuerberater',
-      '<div class="row2"><div><label>Berater-Nr.</label><input id="dvBerater" placeholder="z. B. 12345"></div>' +
-      '<div><label>Mandanten-Nr.</label><input id="dvMandant" placeholder="z. B. 67890"></div></div>' +
-      '<div class="row2"><div><label>Kontenrahmen</label><select id="dvSkr"><option value="03">SKR03</option><option value="04">SKR04</option></select></div>' +
-      '<div><label>Zeitraum ab</label><input type="date" id="dvFrom"></div></div>' +
-      '<p style="margin-top:10px;"><button class="secondary" onclick="bhSaveDatev()">Einstellungen speichern</button> ' +
-      '<button class="success" onclick="bhDatevExport()">⬇ EXTF-Buchungsstapel exportieren</button></p>' +
-      '<p style="font-size:12px;color:#789;">Erzeugt eine DATEV-importierbare CSV aus deinen Aus- und Eingangsrechnungen. Sachkonten mit dem Steuerberater abstimmen.</p>');
-
-    // Lexoffice
-    html += card('📘 Lexoffice / Lexware Office',
-      '<label>API-Key</label><input id="lxKey" placeholder="Lexoffice API-Key" type="password">' +
-      '<p style="margin-top:10px;"><button class="secondary" onclick="bhSaveLex()">Speichern</button> ' +
-      '<button class="secondary" onclick="bhTestLex()">Verbindung testen</button></p>' +
-      '<p style="font-size:12px;color:#789;">Überträgt Rechnungen als Belege nach Lexoffice. Den API-Key findest du in Lexoffice unter Einstellungen → öffentliche API.</p>');
-
-    // Bank
-    html += card('🏦 Bank &amp; Zahlungen',
-      '<div style="background:#eef7f0;border:1px solid #bfe3cb;border-radius:8px;padding:12px;margin-bottom:12px;">' +
-      '<b>🔒 Konto sicher verbinden (PSD2)</b>' +
-      '<p style="font-size:12.5px;color:#3a5;margin:6px 0;">Sichere Anbindung über einen BaFin-lizenzierten Kontoinformationsdienst: Du meldest dich <b>direkt bei deiner Bank</b> an (TAN) — werkflow speichert <b>kein Bank-Passwort</b> und liest nur Umsätze (read-only). Zugriffs-Referenzen werden verschlüsselt abgelegt.</p>' +
-      '<div id="psd2Box" style="font-size:13px;">Lädt…</div></div>' +
-      '<p style="font-size:13px;">Alternativ: Kontoauszug importieren (CAMT.053 / MT940 / CSV) — werkflow gleicht Zahlungen automatisch mit offenen Rechnungen ab.</p>' +
-      '<input type="file" id="bkFile" accept=".xml,.txt,.sta,.csv,.mt940">' +
-      '<p style="margin-top:8px;"><button class="success" onclick="bhBankImport()">Auszug einlesen &amp; abgleichen</button></p>' +
-      '<div id="bkResult"></div>');
-
-    // Eingangsrechnungen
-    html += card('📥 Eingangsrechnungen (ZUGFeRD / XRechnung / PDF)',
-      '<p style="font-size:13px;">E-Rechnung hochladen — ZUGFeRD/XRechnung werden strukturiert gelesen, PDFs per KI.</p>' +
-      '<input type="file" id="erFile" accept=".xml,.pdf">' +
-      '<p style="margin-top:8px;"><button class="success" onclick="bhInvoiceParse()">Rechnung einlesen</button></p>' +
-      '<div id="erResult"></div>' +
-      '<p style="font-size:12px;color:#789;margin-top:10px;">Für den automatischen Posteingang bekommst du eine eigene E-Mail-Adresse (rechnung.…@) — Rechnungen landen dann direkt hier. Weiterleitung an den Steuerberater inklusive.</p>' +
-      '<label>Weiterleitung an Steuerberater (E-Mail)</label><input id="stbMail" placeholder="kanzlei@steuerberater.de">' +
-      '<p style="margin-top:8px;"><button class="secondary" onclick="bhSaveInbox()">Posteingang aktivieren</button></p><div id="inboxAddr"></div>');
-
-    // Händler
-    html += card('🛒 Händler-Bestellung (IDS / UGL / DATANORM)',
-      '<p style="font-size:13px;">Artikelkatalog importieren (DATANORM/CSV) in den Materialstamm.</p>' +
-      '<input type="file" id="catFile" accept=".txt,.001,.csv,.dat">' +
-      '<p style="margin-top:8px;"><button class="success" onclick="bhCatalogImport()">Katalog importieren</button></p>' +
-      '<div id="catResult"></div>' +
-      '<p style="font-size:12px;color:#789;margin-top:10px;">IDS-Connect-Punchout &amp; UGL-Bestellung sind serverseitig vorbereitet; Zugangsdaten des Großhändlers (Kundennummer, Shop-URL) hinterlegen wir pro Lieferant.</p>');
-
-    // E-Mail
-    html += card('✉️ E-Mail-Versand',
-      '<p style="font-size:13px;">Angebote und Rechnungen werden direkt aus werkflow per E-Mail (Server-Postfach/SMTP) versendet — inklusive PDF-Anhang und Antwortadresse deines Betriebs.</p>' +
-      '<label>Absender-Adresse (optional, Standard = Server-Postfach)</label><input id="mailFrom" placeholder="info@deinbetrieb.de">' +
-      '<p style="margin-top:8px;"><button class="secondary" onclick="bhSaveMail()">Speichern</button></p>');
-
-    // Weitere Exporte / Pflicht-Schnittstellen
-    html += card('📤 Weitere Exporte & Schnittstellen',
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-      '<button class="secondary" onclick="bhGobdExport()">🧾 GoBD-Prüferexport (ZIP)</button>' +
-      '<button class="secondary" onclick="bhSepaTransfer()">💶 SEPA-Überweisung offener Eingangsrechnungen</button>' +
-      '<button class="secondary" onclick="bhEmitERechnung()">📄 Letzte Rechnung als XRechnung</button>' +
-      '<button class="secondary" onclick="bhIcalPublish()">📆 Kalender-Abo (iCal) erzeugen</button>' +
-      '</div>' +
-      '<div id="icalUrl"></div>' +
-      '<div style="margin-top:12px;"><label>📐 GAEB-LV importieren (Ausschreibung D81/D83)</label>' +
-      '<input type="file" id="gaebFile" accept=".x81,.x83,.x86,.p83,.xml">' +
-      '<button class="success small" style="margin-left:6px;" onclick="bhGaebImport()">Einlesen</button><div id="gaebResult"></div></div>' +
-      '<p style="font-size:12px;color:#789;margin-top:10px;">GoBD-Export = Datensatz fürs Finanzamt (index.xml + CSV). XRechnung/ZUGFeRD = gesetzeskonforme E-Rechnung. SEPA = Zahldatei fürs Online-Banking. GAEB = LV-Austausch mit Ausschreibungen (Angebot als D84 zurück).</p>');
-
-    main.innerHTML = html;
-    bhLoadState();
+  // Nach Finalisierung automatisch weiterleiten (wird aus finalize aufgerufen)
+  window.wfAutoForwardDatev = function (inv) {
+    if (!inv || !(S().betriebsleiter && S().betriebsleiter.steuerberaterEmail)) return;
+    if (S().betriebsleiter.datevAutoForward === false) return;
+    try { window.wfForwardDatev(inv.id); } catch (e) {}
   };
 
-  // ---- Weitere Exporte ----
-  window.bhGobdExport = function () {
-    if (!online()) return offlineMsg();
-    var out = (S().invoices || []).filter(function (i) { return i.type !== 'gutschrift'; }).map(function (i) {
-      return { number: i.number, date: (i.date || '').slice(0, 10), party: (i.kundeSnapshot && i.kundeSnapshot.name) || '', net: i.net, vat: i.ust, gross: i.gross, paidDate: i.paidAt ? new Date(i.paidAt).toISOString().slice(0, 10) : '' };
-    });
-    var inc = (S().incomingInvoices || []).map(function (i) { return { number: i.invoiceNumber, date: (i.invoiceDate || '').slice(0, 10), party: i.supplierName || '', gross: i.totalGross, paidDate: i.paidAt ? new Date(i.paidAt).toISOString().slice(0, 10) : '' }; });
-    var years = out.concat(inc).map(function (x) { return (x.date || '').slice(0, 4); }).filter(Boolean).sort();
-    var range = { from: (years[0] || '2020') + '-01-01', to: (years[years.length - 1] || '2030') + '-12-31' };
-    apiBlob('/gobd/export', { range: range, outgoing: out, incoming: inc }).then(function (r) { return r.blob(); }).then(function (b) { download('GoBD-Export.zip', b); toast('✓ GoBD-Export erstellt.'); });
-  };
-  window.bhSepaTransfer = function () {
-    if (!online()) return offlineMsg();
-    var pays = (S().incomingInvoices || []).filter(function (i) { return !i.paidAt && (i.iban || (i.data && i.data.iban)); }).map(function (i) {
-      return { endToEndId: i.invoiceNumber, amount: i.totalGross, name: i.supplierName || '', iban: i.iban || (i.data && i.data.iban) || '', remittance: 'Rechnung ' + (i.invoiceNumber || '') };
-    });
-    if (!pays.length) { alert('Keine offenen Eingangsrechnungen mit IBAN gefunden. IBAN in der Eingangsrechnung ergänzen (E-Rechnungen liefern sie automatisch mit).'); return; }
-    var debtor = { name: (S().companySettings && S().companySettings.name) || 'Mein Betrieb', iban: (S().companySettings && S().companySettings.iban) || '' };
-    if (!debtor.iban) debtor.iban = prompt('IBAN deines Geschäftskontos (Absender):', '') || '';
-    apiBlob('/sepa/credit-transfer', { debtor: debtor, payments: pays }).then(function (r) { return r.blob(); }).then(function (b) { download('sepa-ueberweisung.xml', b); toast('✓ SEPA-Datei mit ' + pays.length + ' Zahlungen erstellt.'); });
-  };
-  window.bhEmitERechnung = function () {
-    if (!online()) return offlineMsg();
-    var invs = (S().invoices || []).filter(function (i) { return i.type !== 'gutschrift'; });
-    var inv = invs[invs.length - 1];
-    if (!inv) { alert('Keine Rechnung vorhanden.'); return; }
-    var cs = S().companySettings || {};
-    var payload = { format: 'xrechnung',
-      invoice: { number: inv.number, date: (inv.date || '').slice(0, 10), dueDate: (inv.dueDate || '').slice(0, 10),
-        lines: (inv.items || []).filter(function (it) { return !it.isHeader; }).map(function (it) { return { name: it.name, qty: it.qty || 1, unit: it.unit || 'C62', unitPrice: it.price || 0, vatRate: inv.vatRate || 19 }; }),
-        net: inv.net, vat: inv.ust, gross: inv.gross },
-      seller: { name: cs.name || '', address: cs.address || '', zip: cs.zip || '', city: cs.city || '', vatId: cs.ustId || cs.vatId || '', iban: cs.iban || '' },
-      buyer: { name: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '' } };
-    apiBlob('/invoices/emit', payload).then(function (r) { return r.blob(); }).then(function (b) { download('xrechnung-' + (inv.number || 'rechnung') + '.xml', b); toast('✓ XRechnung erzeugt.'); });
-  };
-  window.bhIcalPublish = function () {
-    if (!online()) return offlineMsg();
-    var events = collectCalendarEvents();
-    apiJson('/ical/publish', 'POST', { name: 'werkflow Kalender', regenerate: false, events: events }).then(function (r) {
-      var box = document.getElementById('icalUrl');
-      if (r.data && r.data.feedUrl) box.innerHTML = '<div style="margin-top:8px;padding:8px;background:#eaf4ff;border-radius:6px;font-size:13px;">📆 Abo-Adresse (' + r.data.count + ' Termine): <b>' + esc(r.data.feedUrl) + '</b><br>In Google/Apple/Outlook-Kalender als abonnierten Kalender per URL hinzufügen.</div>';
-      else toast('iCal-Feed erstellt.');
-    });
-  };
-  function collectCalendarEvents() {
-    var evs = [];
-    (S().appointments || S().calendarEvents || S().termine || []).forEach(function (e) {
-      if (!e.start && !e.date) return;
-      evs.push({ uid: e.id, start: e.start || e.date, end: e.end || '', summary: e.title || e.summary || e.name || 'Termin', location: e.location || e.ort || '', description: e.note || e.description || '', allDay: !!e.allDay });
-    });
-    return evs;
+  // ---- VOB-kumulierende Abschlagsrechnung ----
+  function findOrder(projId, orderId) {
+    var p = (S().projects || []).find(function (x) { return x.id === projId; }); if (!p) return null;
+    var o = (p.orders || []).find(function (x) { return x.id === orderId; });
+    return o ? { proj: p, order: o } : null;
   }
-  window.bhGaebImport = function () {
-    if (!online()) return offlineMsg();
-    var f = document.getElementById('gaebFile'); if (!f || !f.files[0]) { alert('Bitte GAEB-Datei wählen.'); return; }
-    readFile(f.files[0]).then(function (buf) { return apiRaw('/gaeb/parse', buf, 'application/xml'); }).then(function (r) {
-      var box = document.getElementById('gaebResult');
-      if (r.status !== 200 || !r.data) { toast('GAEB-Import fehlgeschlagen.'); return; }
-      window._gaebItems = r.data.items || [];
-      box.innerHTML = '<p style="margin-top:8px;"><b>' + r.data.itemCount + ' Positionen' + (r.data.projectName ? ' — ' + esc(r.data.projectName) : '') + '</b> ' +
-        '<button class="success small" onclick="bhGaebApply()">Als LV/Materialliste übernehmen</button></p>';
-    });
-  };
-  window.bhGaebApply = function () {
-    var items = window._gaebItems || [];
-    if (!Array.isArray(S().materialLists)) S().materialLists = [];
-    S().materialLists.push({ id: (typeof uid === 'function' ? uid('ml') : 'ml_' + Date.now()), name: 'GAEB-Import ' + new Date().toLocaleDateString('de-DE'), positions: items.map(function (it, i) { return { id: 'mp_' + i, nr: it.pos || (i + 1), name: it.text, unit: it.unit, price: it.up || 0, qty: it.qty }; }) });
+  function orderGesamtNet(order) {
+    return (order.lvItems || []).reduce(function (s, it) { return s + (it.isHeader || it.isSubtotal ? 0 : (Number(it.qty) || 0) * (Number(it.price) || 0)); }, 0);
+  }
+  function priorAbschlaege(orderId) {
+    return (S().invoices || []).filter(function (i) { return i.orderId === orderId && (i.partialKind === 'abschlag' || i.partialKind === 'schluss') && i.type !== 'gutschrift'; });
+  }
+  function priorCumNet(orderId) { return priorAbschlaege(orderId).reduce(function (s, i) { return s + (Number(i.net) || 0); }, 0); }
+  function aufmassList(projId, orderId) {
+    return (S().aufmasse || []).filter(function (a) { return a.projectId === projId && a.orderId === orderId; });
+  }
+
+  window.wfOrderVobToggle = function (projId, orderId, on) {
+    var f = findOrder(projId, orderId); if (!f) return;
+    f.order.vobAbschlag = !!on;
     if (typeof saveState === 'function') saveState();
-    toast('✓ ' + items.length + ' GAEB-Positionen übernommen.');
+    toast(on ? '✓ VOB-Abschlagsrechnungen für diesen Auftrag aktiviert.' : 'VOB-Abschläge deaktiviert.');
+    if (typeof openOrderDetail === 'function') openOrderDetail(projId, orderId, 'info');
   };
 
-  function bhLoadState() {
-    if (!online()) return;
-    apiJson('/integrations', 'GET').then(function (r) {
-      if (r.status !== 200 || !r.data) return;
-      (r.data.integrations || []).forEach(function (c) {
-        if (c.kind === 'datev' && c.config) { setVal('dvBerater', c.config.beraterNr); setVal('dvMandant', c.config.mandantNr); if (c.config.skr) setVal('dvSkr', c.config.skr); }
-        if (c.kind === 'invoice_inbox' && c.config) setVal('stbMail', c.config.forwardTo);
-        if (c.kind === 'mail' && c.config) setVal('mailFrom', c.config.from);
-      });
-      bhRenderInbox(r.data.inboxCount || 0);
-    });
-    apiJson('/inbox', 'GET').then(function (r) { if (r.status === 200) { _inbox = (r.data && r.data.items) || []; bhRenderInbox(_inbox.length); } });
-    bhPsd2Load();
+  // Buttons-HTML für die Auftrags-Aktionsleiste (nur wenn VOB aktiv)
+  window.wfAbschlagBarHtml = function (projId, orderId) {
+    var f = findOrder(projId, orderId); if (!f || !f.order.vobAbschlag) return '';
+    var cum = priorCumNet(orderId), ges = orderGesamtNet(f.order);
+    var pct = ges > 0 ? Math.round(cum / ges * 100) : 0;
+    return '<button class="secondary" onclick="wfNewAbschlag(\'' + projId + '\',\'' + orderId + '\')">➕ Abschlagsrechnung (VOB)</button>' +
+      '<button class="secondary" onclick="wfSchlussrechnung(\'' + projId + '\',\'' + orderId + '\')">🏁 Schlussrechnung</button>' +
+      '<span style="font-size:12px;color:#789;align-self:center;">bereits abgerechnet: ' + eur(cum) + ' (' + pct + '%)</span>';
+  };
+
+  function nextNr() {
+    var n = (typeof window.nextInvoiceNumber === 'function') ? window.nextInvoiceNumber() : ('RE-' + Date.now());
+    return (typeof window.ensureUniqueInvoiceNumber === 'function') ? window.ensureUniqueInvoiceNumber(n) : n;
   }
+  function bumpNr() { if (S().invoiceSettings) S().invoiceSettings.nextNumber = (S().invoiceSettings.nextNumber || 1) + 1; }
+  function iso() { return new Date().toISOString().slice(0, 10); }
 
-  // ---- Sichere PSD2-Bankanbindung ----
-  window.bhPsd2Load = function () {
-    var box = document.getElementById('psd2Box'); if (!box) return;
-    if (!online()) { box.innerHTML = 'Nur mit werkflow-Server verfügbar.'; return; }
-    apiJson('/bank/psd2/status', 'GET').then(function (r) {
-      if (!r.data || r.status !== 200) { box.innerHTML = 'Status nicht verfügbar.'; return; }
-      if (r.data.connected) {
-        var accs = (r.data.accounts || []).map(function (a) { return esc(a.iban || a.id); }).join(', ');
-        box.innerHTML = '<div style="color:#1e8449;">✓ Verbunden mit <b>' + esc(r.data.institutionName || 'Bank') + '</b>' + (accs ? ' · ' + accs : '') + '</div>' +
-          (r.data.lastSync ? '<div style="color:#789;font-size:12px;">Letzter Abgleich: ' + esc(new Date(r.data.lastSync).toLocaleString('de-DE')) + '</div>' : '') +
-          '<p style="margin-top:8px;"><button class="success small" onclick="bhPsd2Sync()">🔄 Umsätze abrufen</button> ' +
-          '<button class="danger small" onclick="bhPsd2Disconnect()">Trennen</button></p>';
-      } else if (r.data.status && r.data.status !== 'LN') {
-        box.innerHTML = '<div style="color:#b9770e;">Verbindung gestartet — bitte Bank-Login abschließen.</div><p style="margin-top:6px;"><button class="secondary small" onclick="bhPsd2Load()">Status prüfen</button></p>';
-      } else {
-        box.innerHTML = '<button class="success small" onclick="bhPsd2Pick()">Bank auswählen &amp; verbinden</button>';
-      }
+  window.wfNewAbschlag = function (projId, orderId) {
+    var f = findOrder(projId, orderId); if (!f) return;
+    var ges = orderGesamtNet(f.order); var cum = priorCumNet(orderId);
+    var cumPct = ges > 0 ? Math.round(cum / ges * 100) : 0;
+    var am = aufmassList(projId, orderId);
+    var amHtml = am.length ? '<div style="max-height:140px;overflow:auto;border:1px solid #eee;border-radius:6px;padding:6px;margin:6px 0;font-size:12px;">' +
+      am.map(function (a) { return '<div style="display:flex;justify-content:space-between;"><span>' + esc(a.name) + (a.formula ? ' <span style="color:#999;">(' + esc(a.formula) + ')</span>' : '') + '</span><span>' + (typeof fmtNum === 'function' ? fmtNum(a.qty, 2) : a.qty) + ' ' + esc(a.unit || '') + '</span></div>'; }).join('') + '</div>' : '<div style="font-size:12px;color:#999;margin:6px 0;">Noch keine Aufmaßliste — im Auftrag über „📐 Aufmaß" erfassen.</div>';
+    showModal('<h2>➕ Abschlagsrechnung (VOB, kumulierend)</h2>' +
+      '<div style="background:#f4f6f9;border-radius:6px;padding:8px 10px;font-size:13px;margin-bottom:8px;">' +
+      'Gesamtleistung lt. Aufmaß/LV: <b>' + eur(ges) + '</b><br>bereits kumuliert abgerechnet: <b>' + eur(cum) + '</b> (' + cumPct + '%)</div>' +
+      '<b style="font-size:13px;">Aufmaßliste</b>' + amHtml +
+      '<label>Neuer kumulierter Leistungsstand</label>' +
+      '<div class="row2"><div><input type="number" id="abPct" min="0" max="100" step="1" value="' + Math.min(100, cumPct + 20) + '"> % der Gesamtleistung</div>' +
+      '<div><input type="number" id="abAmt" step="0.01" placeholder="oder Betrag netto €"></div></div>' +
+      '<p style="font-size:12px;color:#789;">Die Software berechnet automatisch: neuer Stand − bereits abgerechnet = diese Abschlagszahlung.</p>' +
+      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button>' +
+      '<button class="success" onclick="wfCreateAbschlag(\'' + projId + '\',\'' + orderId + '\')">Abschlagsrechnung erstellen</button></div>', 'wide');
+  };
+  window.wfCreateAbschlag = function (projId, orderId) {
+    var f = findOrder(projId, orderId); if (!f) return;
+    var ges = orderGesamtNet(f.order); var cum = priorCumNet(orderId);
+    var amtEl = document.getElementById('abAmt'); var pctEl = document.getElementById('abPct');
+    var newCum;
+    if (amtEl && amtEl.value) newCum = cum + Number(amtEl.value); // Betrag = zusätzlicher Abschlag
+    else { var pct = Number(pctEl.value) || 0; newCum = Math.round(ges * pct) / 100; }
+    var inc = Math.round((newCum - cum) * 100) / 100;
+    if (inc <= 0) { alert('Der neue Stand muss über dem bereits abgerechneten Betrag liegen.'); return; }
+    var nr = priorAbschlaege(orderId).filter(function (i) { return i.partialKind === 'abschlag'; }).length + 1;
+    createPartialInvoiceInternal(f.proj, f.order, {
+      kind: 'abschlag', net: inc, aggregate: cum, cumulative: newCum, ges: ges, label: nr + '. Abschlagszahlung (VOB) — kumulierter Leistungsstand ' + eur(newCum) + ' von ' + eur(ges),
     });
+    if (typeof closeModal === 'function') closeModal();
   };
-  window.bhPsd2Pick = function () {
-    var box = document.getElementById('psd2Box');
-    box.innerHTML = 'Banken werden geladen…';
-    apiJson('/bank/psd2/institutions?country=de', 'GET').then(function (r) {
-      if (!r.data || !r.data.configured) { box.innerHTML = '<div style="color:#b9770e;">PSD2-Anbindung ist auf dem Server noch nicht konfiguriert (Anbieter-Zugangsdaten fehlen).</div>'; return; }
-      if (!r.data.institutions || !r.data.institutions.length) { box.innerHTML = 'Keine Banken gefunden.'; return; }
-      var opts = r.data.institutions.map(function (i) { return '<option value="' + esc(i.id) + '">' + esc(i.name) + (i.bic ? ' (' + esc(i.bic) + ')' : '') + '</option>'; }).join('');
-      box.innerHTML = '<select id="psd2Bank" style="max-width:100%;">' + opts + '</select> ' +
-        '<button class="success small" onclick="bhPsd2Connect()">Verbinden →</button>';
-    });
-  };
-  window.bhPsd2Connect = function () {
-    var sel = document.getElementById('psd2Bank'); if (!sel) return;
-    var id = sel.value, name = sel.options[sel.selectedIndex].text;
-    apiJson('/bank/psd2/connect', 'POST', { institutionId: id, institutionName: name }).then(function (r) {
-      if (r.data && r.data.link) { toast('Weiterleitung zur Bank …'); window.open(r.data.link, '_blank'); document.getElementById('psd2Box').innerHTML = '<div style="color:#b9770e;">Bitte im neuen Fenster bei deiner Bank anmelden und die Freigabe erteilen.</div><p style="margin-top:6px;"><button class="secondary small" onclick="bhPsd2Load()">Fertig — Status prüfen</button></p>'; }
-      else toast('Verbindung fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
-    });
-  };
-  window.bhPsd2Sync = function () {
-    apiJson('/bank/psd2/sync', 'POST').then(function (r) {
-      if (r.data && r.data.ok) { toast('✓ ' + r.data.added + ' neue Umsätze abgerufen — im Posteingang zum Abgleich.'); renderBuchhaltungTab(); }
-      else toast('Abruf fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
-    });
-  };
-  window.bhPsd2Disconnect = function () {
-    if (!confirm('Bankverbindung wirklich trennen?')) return;
-    apiJson('/bank/psd2/disconnect', 'POST').then(function () { toast('Bankverbindung getrennt.'); bhPsd2Load(); });
-  };
-  function setVal(id, v) { var el = document.getElementById(id); if (el && v != null) el.value = v; }
-
-  function bhRenderInbox(count) {
-    var box = document.getElementById('bhInboxBox'); if (!box) return;
-    if (!_inbox.length) { box.innerHTML = count ? '<div style="padding:10px;background:#eaf4ff;border-radius:8px;margin:10px 0;">📬 ' + count + ' neue(r) Posten im Eingang. <button class="secondary small" onclick="renderBuchhaltungTab()">Aktualisieren</button></div>' : ''; return; }
-    var rows = _inbox.map(function (it) {
-      var label = it.kind === 'invoice' ? '📄 Eingangsrechnung' : it.kind === 'order' ? '🛒 Bestellung (Portal)' : '🏦 Bank-Transaktionen';
-      var info = '';
-      if (it.kind === 'invoice' && it.payload && it.payload.data) info = esc((it.payload.data.supplier || '') + ' · ' + eur(it.payload.data.gross || 0));
-      if (it.kind === 'order' && it.payload) info = (it.payload.count || 0) + ' Positionen';
-      if (it.kind === 'bank-tx' && it.payload) info = ((it.payload.transactions || []).length) + ' Buchungen';
-      return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid #eef;">' +
-        '<span><b>' + label + '</b> <span style="color:#789;">' + info + '</span></span>' +
-        '<span><button class="success small" onclick="bhInboxImport(\'' + it.id + '\',\'' + it.kind + '\')">Übernehmen</button> ' +
-        '<button class="secondary small" onclick="bhInboxDismiss(\'' + it.id + '\')">Verwerfen</button></span></div>';
-    }).join('');
-    box.innerHTML = '<div class="card" style="padding:12px;margin:10px 0;border-left:4px solid #1a5cff;"><h3 style="margin:0 0 8px;font-size:15px;">📬 Posteingang (' + _inbox.length + ')</h3>' + rows + '</div>';
-  }
-
-  window.bhInboxImport = function (id, kind) {
-    var it = _inbox.find(function (x) { return x.id === id; });
-    apiJson('/inbox/' + id + '/import', 'POST').then(function () {
-      if (it && kind === 'invoice' && it.payload && it.payload.data) importIncomingInvoice(it.payload.data);
-      if (it && kind === 'order' && it.payload) importOrder(it.payload);
-      _inbox = _inbox.filter(function (x) { return x.id !== id; });
-      bhRenderInbox(_inbox.length); toast('✓ Übernommen.');
-    });
-  };
-  window.bhInboxDismiss = function (id) {
-    apiJson('/inbox/' + id + '/dismiss', 'POST').then(function () { _inbox = _inbox.filter(function (x) { return x.id !== id; }); bhRenderInbox(_inbox.length); });
+  window.wfSchlussrechnung = function (projId, orderId) {
+    var f = findOrder(projId, orderId); if (!f) return;
+    var ges = orderGesamtNet(f.order); var cum = priorCumNet(orderId);
+    var rest = Math.round((ges - cum) * 100) / 100;
+    if (rest < 0) { alert('Bereits mehr abgerechnet als Gesamtleistung — bitte prüfen.'); return; }
+    if (!confirm('Schlussrechnung erstellen?\n\nGesamtleistung: ' + eur(ges) + '\n− bereits abgerechnet: ' + eur(cum) + '\n= Restbetrag netto: ' + eur(rest))) return;
+    createPartialInvoiceInternal(f.proj, f.order, { kind: 'schluss', net: rest, aggregate: cum, cumulative: ges, ges: ges, label: 'Schlussrechnung (VOB) — Gesamtleistung abzüglich geleisteter Abschläge' });
+    if (typeof switchTab === 'function') switchTab('rechnungen');
   };
 
-  // ---- DATEV ----
-  window.bhSaveDatev = function () {
-    if (!online()) return offlineMsg();
-    apiJson('/integrations/datev', 'PUT', { config: { beraterNr: val('dvBerater'), mandantNr: val('dvMandant'), skr: val('dvSkr') } }).then(function () { toast('✓ DATEV-Einstellungen gespeichert.'); });
-  };
-  window.bhDatevExport = function () {
-    if (!online()) return offlineMsg();
-    var items = collectInvoiceItems();
-    if (!items.length) { alert('Keine finalisierten Rechnungen zum Export gefunden.'); return; }
-    apiBlob('/datev/export', { items: items, cfg: { skr: val('dvSkr') }, meta: { beraterNr: val('dvBerater'), mandantNr: val('dvMandant'), bezeichnung: 'werkflow Export' } })
-      .then(function (r) { return r.blob(); })
-      .then(function (b) { download('EXTF_Buchungsstapel.csv', b); toast('✓ DATEV-Buchungsstapel (' + items.length + ' Belege) heruntergeladen.'); });
-  };
-  function collectInvoiceItems() {
-    var out = [];
-    (S().invoices || []).forEach(function (inv) {
-      if (inv.type === 'gutschrift') return;
-      out.push({ kind: 'outgoing', number: inv.number, date: (inv.date || '').slice(0, 10), gross: inv.gross, party: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '', dueDate: inv.dueDate });
-    });
-    (S().incomingInvoices || []).forEach(function (inv) {
-      out.push({ kind: 'incoming', number: inv.invoiceNumber, date: (inv.invoiceDate || '').slice(0, 10), gross: inv.totalGross, party: inv.supplierName || '' });
-    });
-    return out;
-  }
-
-  // ---- Lexoffice ----
-  window.bhSaveLex = function () {
-    if (!online()) return offlineMsg();
-    apiJson('/integrations/lexoffice', 'PUT', { config: { apiKey: val('lxKey') } }).then(function () { toast('✓ Lexoffice-Key gespeichert.'); setVal('lxKey', ''); });
-  };
-  window.bhTestLex = function () {
-    if (!online()) return offlineMsg();
-    apiJson('/lexoffice/test', 'POST').then(function (r) {
-      if (r.data && r.data.ok) toast('✓ Lexoffice verbunden: ' + ((r.data.data && r.data.data.companyName) || 'OK'));
-      else toast('✗ Lexoffice-Test fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').');
-    });
-  };
-
-  // ---- Bank ----
-  var _bankTx = [];
-  window.bhBankImport = function () {
-    if (!online()) return offlineMsg();
-    var f = document.getElementById('bkFile'); if (!f || !f.files[0]) { alert('Bitte Kontoauszug wählen.'); return; }
-    var ct = /\.xml$/i.test(f.files[0].name) ? 'application/xml' : /\.csv$/i.test(f.files[0].name) ? 'text/csv' : 'text/plain';
-    readFile(f.files[0]).then(function (buf) { return apiRaw('/bank/import', buf, ct); }).then(function (r) {
-      if (r.status !== 200) { toast('Import fehlgeschlagen.'); return; }
-      _bankTx = r.data.transactions || [];
-      var items = collectOpenItems();
-      apiJson('/bank/reconcile', 'POST', { transactions: _bankTx, openItems: items }).then(function (rr) {
-        renderBankResult(r.data.format, _bankTx, (rr.data && rr.data.matches) || []);
-      });
-    });
-  };
-  function collectOpenItems() {
-    var items = [];
-    (S().invoices || []).forEach(function (inv) { if (inv.type !== 'gutschrift' && !inv.paidAt) items.push({ id: 'out_' + inv.id, kind: 'outgoing', number: inv.number, amount: inv.gross, party: (inv.kundeSnapshot && inv.kundeSnapshot.name) || '' }); });
-    (S().incomingInvoices || []).forEach(function (inv) { if (!inv.paidAt) items.push({ id: 'in_' + inv.id, kind: 'incoming', number: inv.invoiceNumber, amount: inv.totalGross, party: inv.supplierName || '' }); });
-    return items;
-  }
-  function renderBankResult(format, txs, matches) {
-    var box = document.getElementById('bkResult'); if (!box) return;
-    var mByTx = {}; matches.forEach(function (m) { mByTx[m.txIndex] = m; });
-    var rows = txs.map(function (t, i) {
-      var m = mByTx[i];
-      var badge = m ? (m.auto ? '<span style="color:#1e8449;">✓ ' + esc(m.number) + '</span>' : '<span style="color:#b9770e;">? ' + esc(m.number) + '</span>') : '<span style="color:#999;">—</span>';
-      return '<tr><td>' + esc(t.date) + '</td><td>' + esc(t.counterparty || '') + '</td><td style="text-align:right;color:' + (t.amount < 0 ? '#c0392b' : '#1e8449') + ';">' + eur(t.amount) + '</td><td>' + badge + '</td></tr>';
-    }).join('');
-    var auto = matches.filter(function (m) { return m.auto; }).length;
-    box.innerHTML = '<div style="margin-top:12px;"><b>' + txs.length + ' Buchungen (' + format + ') · ' + auto + ' automatisch zugeordnet</b>' +
-      '<div style="overflow-x:auto;"><table style="width:100%;font-size:13px;margin-top:6px;"><tr style="text-align:left;color:#789;"><th>Datum</th><th>Gegenpartei</th><th style="text-align:right;">Betrag</th><th>Rechnung</th></tr>' + rows + '</table></div>' +
-      (auto ? '<p style="margin-top:8px;"><button class="success" onclick="bhBankApply()">' + auto + ' Zahlungen als bezahlt buchen</button></p>' : '') + '</div>';
-    window._bankMatches = matches;
-  }
-  window.bhBankApply = function () {
-    var matches = window._bankMatches || [];
-    var n = 0;
-    matches.filter(function (m) { return m.auto; }).forEach(function (m) {
-      var rawId = String(m.itemId).replace(/^(out_|in_)/, '');
-      var inv = (S().invoices || []).find(function (x) { return x.id === rawId; }) || (S().incomingInvoices || []).find(function (x) { return x.id === rawId; });
-      if (inv && !inv.paidAt) { inv.paidAt = Date.now(); if (S().invoices.indexOf(inv) >= 0) inv.status = 'paid'; n++; }
-    });
+  function createPartialInvoiceInternal(proj, order, opt) {
+    var vat = (S().invoiceSettings && S().invoiceSettings.vatRate) || 19;
+    var net = Math.round(opt.net * 100) / 100;
+    var ust = Math.round(net * vat) / 100;
+    var kunde = (S().kunden || []).find(function (k) { return k.id === (proj.kundeId || order.kundeId); }) || {};
+    var number = nextNr();
+    var inv = {
+      id: (typeof uid === 'function' ? uid('inv') : 'inv_' + Date.now()),
+      number: number, type: 'rechnung', partialKind: opt.kind,
+      partialCumulativeNet: opt.cumulative, partialAggregateNet: opt.aggregate, partialTotalNet: opt.ges,
+      date: iso(), projectId: proj.id, orderId: order.id,
+      kundeSnapshot: Object.assign({}, kunde),
+      projectSnapshot: { name: proj.name, pspNumber: proj.pspNumber, orderNumber: order.orderNumber || order.auftragsnummer },
+      items: [{ nr: '1', name: opt.label, qty: 1, unit: 'psch', price: net }],
+      description: opt.kind === 'schluss' ? 'Schlussrechnung nach VOB — kumulierte Abschläge werden verrechnet.' : 'Abschlagsrechnung nach VOB (§ 16 VOB/B), kumulierend.',
+      notes: '', vatRate: vat, itemsNet: net, totalDiscount: 0, totalDiscountAmt: 0,
+      net: net, ust: ust, gross: Math.round((net + ust) * 100) / 100,
+      createdAt: Date.now(), finalized: true, status: 'draft',
+    };
+    if (!Array.isArray(S().invoices)) S().invoices = [];
+    S().invoices.push(inv);
+    bumpNr();
     if (typeof saveState === 'function') saveState();
-    toast('✓ ' + n + ' Rechnungen als bezahlt markiert.');
-    renderBuchhaltungTab();
-  };
-
-  // ---- Eingangsrechnung E-Invoice ----
-  window.bhInvoiceParse = function () {
-    if (!online()) return offlineMsg();
-    var f = document.getElementById('erFile'); if (!f || !f.files[0]) { alert('Bitte Rechnung wählen.'); return; }
-    var file = f.files[0];
-    var ct = /\.pdf$/i.test(file.name) ? 'application/pdf' : 'application/xml';
-    readFile(file).then(function (buf) { return apiRaw('/invoices/parse', buf, ct); }).then(function (r) {
-      var box = document.getElementById('erResult');
-      if (!r.data || !r.data.ok) { box.innerHTML = '<p style="color:#c0392b;margin-top:8px;">Konnte nicht gelesen werden (' + esc((r.data && r.data.error) || 'Fehler') + '). Als PDF-Beleg manuell erfassen.</p>'; return; }
-      var d = r.data.data;
-      window._parsedInvoice = d;
-      box.innerHTML = '<div style="margin-top:10px;padding:10px;background:#f4f7fb;border-radius:8px;">' +
-        '<b>' + esc(d.supplier && d.supplier.name || d.supplier || '') + '</b> · Nr. ' + esc(d.invoiceNumber || '?') + '<br>' +
-        'Datum ' + esc(d.invoiceDate || d.issueDate || '?') + ' · Brutto <b>' + eur(d.gross || 0) + '</b> (' + esc(r.data.via) + ')<br>' +
-        (d.positions ? d.positions.length + ' Positionen' : '') +
-        '<p style="margin-top:8px;"><button class="success" onclick="bhImportParsed()">Als Eingangsrechnung übernehmen</button></p></div>';
-    });
-  };
-  window.bhImportParsed = function () { if (window._parsedInvoice) { importIncomingInvoice(window._parsedInvoice); toast('✓ Eingangsrechnung übernommen.'); } };
-  function importIncomingInvoice(d) {
-    if (!Array.isArray(S().incomingInvoices)) S().incomingInvoices = [];
-    S().incomingInvoices.push({
-      id: (typeof uid === 'function' ? uid('iinv') : 'iinv_' + Date.now()),
-      supplierName: (d.supplier && d.supplier.name) || d.supplier || '', invoiceNumber: d.invoiceNumber || '',
-      invoiceDate: d.invoiceDate || d.issueDate || '', totalGross: d.gross || 0,
-      positions: (d.positions || []).map(function (p, i) { return { id: 'iip_' + i, description: p.name, nr: i + 1, qty: p.qty || 0, unit: p.unit || '', ep: p.unitPrice || 0, target: 'project' }; }),
-      uploadedAt: Date.now(), via: 'einvoice'
-    });
-    if (typeof saveState === 'function') saveState();
+    toast('✓ ' + (opt.kind === 'schluss' ? 'Schlussrechnung' : 'Abschlagsrechnung') + ' ' + number + ' erstellt (netto ' + eur(net) + ').');
+    if (typeof exportInvoicePDF === 'function') { try { exportInvoicePDF(inv.id); } catch (e) {} }
+    window._wfLastPartial = inv; // für Tests
+    return inv;
   }
-  function importOrder(payload) {
-    if (!Array.isArray(S().purchaseOrders)) S().purchaseOrders = [];
-    S().purchaseOrders.push({
-      id: (typeof uid === 'function' ? uid('po') : 'po_' + Date.now()),
-      number: 'IDS-' + Date.now(), supplierName: 'Großhandel (Portal)', date: new Date().toISOString().slice(0, 10),
-      items: (payload.positions || []).map(function (p, i) { return { nr: i + 1, name: p.name || p.artNr, qty: p.qty, unit: p.unit, price: p.price }; }),
-      status: 'draft', createdAt: Date.now()
-    });
-    if (typeof saveState === 'function') saveState();
-  }
-
-  window.bhSaveInbox = function () {
-    if (!online()) return offlineMsg();
-    apiJson('/integrations/invoice_inbox', 'PUT', { regenerateInboxToken: true, config: { forwardTo: val('stbMail') } }).then(function (r) {
-      var box = document.getElementById('inboxAddr');
-      if (r.data && r.data.inboxAddress) box.innerHTML = '<div style="margin-top:8px;padding:8px;background:#eaf4ff;border-radius:6px;font-size:13px;">📬 Deine Rechnungs-Adresse: <b>' + esc(r.data.inboxAddress) + '</b><br>Leite Lieferantenrechnungen hierher – sie landen automatisch im Posteingang.</div>';
-      else box.innerHTML = '<p style="color:#1e8449;margin-top:6px;">✓ Gespeichert.</p>';
-    });
-  };
-  window.bhSaveMail = function () { if (!online()) return offlineMsg(); apiJson('/integrations/mail', 'PUT', { config: { from: val('mailFrom') } }).then(function () { toast('✓ Absender gespeichert.'); }); };
-
-  // ---- Katalog ----
-  window.bhCatalogImport = function () {
-    if (!online()) return offlineMsg();
-    var f = document.getElementById('catFile'); if (!f || !f.files[0]) { alert('Bitte Katalogdatei wählen.'); return; }
-    var ct = /\.csv$/i.test(f.files[0].name) ? 'text/csv' : 'text/plain';
-    readFile(f.files[0]).then(function (buf) { return apiRaw('/purchasing/catalog', buf, ct); }).then(function (r) {
-      var box = document.getElementById('catResult');
-      if (r.status !== 200) { toast('Import fehlgeschlagen.'); return; }
-      window._catalog = r.data.articles || [];
-      box.innerHTML = '<p style="margin-top:8px;"><b>' + r.data.count + ' Artikel (' + r.data.format + ') erkannt.</b> ' +
-        '<button class="success small" onclick="bhCatalogApply()">In Materialstamm übernehmen</button></p>';
-    });
-  };
-  window.bhCatalogApply = function () {
-    var arts = window._catalog || [];
-    if (!Array.isArray(S().materialLists)) S().materialLists = [];
-    var list = { id: (typeof uid === 'function' ? uid('ml') : 'ml_' + Date.now()), name: 'Import ' + new Date().toLocaleDateString('de-DE'), positions: arts.map(function (a, i) { return { id: 'mp_' + i, nr: i + 1, name: a.name, unit: a.unit, price: a.priceEur, artNr: a.artNr }; }) };
-    S().materialLists.push(list);
-    if (typeof saveState === 'function') saveState();
-    toast('✓ ' + arts.length + ' Artikel als Materialliste importiert.');
-  };
-
-  function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
-
-  // ============================= WEBSITE-BAUKASTEN ============================
-  window.renderWebsiteTab = function () {
-    var main = document.getElementById('mainContent'); if (!main) return;
-    var html = '<h2 style="margin-bottom:6px;">🌐 Website-Baukasten</h2>' +
-      '<div class="help">Beantworte ein paar Fragen zu deinem Betrieb – die KI erstellt daraus eine fertige, SEO-optimierte und DSGVO-konforme Website mit Cookie-Consent, Impressum und Datenschutz. Anschließend mit eigener Domain veröffentlichen.</div>';
-    if (!online()) html += '<div style="background:#fff7e6;border:1px solid #f0d68c;border-radius:8px;padding:10px 12px;font-size:13px;color:#8a6d1a;margin:10px 0;">ℹ️ Der Website-Baukasten braucht den werkflow-Server.</div>';
-    if (!guest()) html += '<button class="success" onclick="wsNew()">+ Neue Website erstellen</button>';
-    html += '<div id="wsList" style="margin-top:14px;"></div>';
-    main.innerHTML = html;
-    if (online()) apiJson('/sites', 'GET').then(function (r) { wsRenderList((r.data && r.data.sites) || [], r.data && r.data.baseUrl); });
-  };
-  function wsRenderList(sites, baseUrl) {
-    var box = document.getElementById('wsList'); if (!box) return;
-    if (!sites.length) { box.innerHTML = '<div style="padding:24px;text-align:center;color:#889;">Noch keine Website erstellt.</div>'; return; }
-    box.innerHTML = sites.map(function (s) {
-      var pub = s.status === 'published';
-      return '<div class="card" style="padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
-        '<div><b>' + esc(s.slug) + '</b> <span style="color:#789;">· Vorlage ' + esc(s.template) + '</span><br>' +
-        '<span style="font-size:12px;color:' + (pub ? '#1e8449' : '#b9770e') + ';">' + (pub ? '● veröffentlicht' : '○ Entwurf') + (s.domain ? ' · ' + esc(s.domain) : '') + '</span></div>' +
-        '<div><button class="secondary small" onclick="wsPreview(\'' + s.id + '\')">Vorschau</button> ' +
-        (pub ? '<a class="secondary small" style="text-decoration:none;padding:6px 10px;" href="' + esc((baseUrl || '') + s.slug + '/index.html') + '" target="_blank">Öffnen ↗</a> <button class="secondary small" onclick="wsUnpublish(\'' + s.id + '\')">Offline</button>' : '<button class="success small" onclick="wsPublish(\'' + s.id + '\')">Veröffentlichen</button>') +
-        '</div></div>';
-    }).join('');
-  }
-
-  var _wsStep = 0, _wsData = {};
-  window.wsNew = function () {
-    if (!online()) return offlineMsg();
-    _wsStep = 0; _wsData = { template: 'modern', services: [] };
-    wsShowStep();
-  };
-  function wsShowStep() {
-    var steps = [wsStep1, wsStep2, wsStep3, wsStep4];
-    steps[_wsStep]();
-  }
-  function wsStep1() {
-    showModal('<h2>Website · Schritt 1/4 — Unternehmen</h2>' +
-      '<label>Firmenname *</label><input id="ws_company" value="' + esc(_wsData.companyName || '') + '">' +
-      '<label>Branche</label><input id="ws_branche" placeholder="z. B. Elektroinstallation" value="' + esc(_wsData.branche || '') + '">' +
-      '<label>Ort</label><input id="ws_city" placeholder="z. B. Stuttgart" value="' + esc(_wsData.city || '') + '">' +
-      '<label>Slogan (optional)</label><input id="ws_slogan" value="' + esc(_wsData.slogan || '') + '">' +
-      '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Abbrechen</button><button class="success" onclick="wsNext(1)">Weiter →</button></div>', 'wide');
-  }
-  function wsStep2() {
-    showModal('<h2>Website · Schritt 2/4 — Leistungen</h2>' +
-      '<p style="font-size:13px;color:#789;">Eine Leistung pro Zeile.</p>' +
-      '<textarea id="ws_services" rows="6" placeholder="Elektroinstallation\nSmart Home\nE-Ladestationen">' + esc((_wsData.services || []).join('\n')) + '</textarea>' +
-      '<label>Über uns / Betriebsbeschreibung (optional)</label><textarea id="ws_about" rows="4">' + esc(_wsData.about || '') + '</textarea>' +
-      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsNext(2)">Weiter →</button></div>', 'wide');
-  }
-  function wsStep3() {
-    showModal('<h2>Website · Schritt 3/4 — Kontakt</h2>' +
-      '<div class="row2"><div><label>Telefon</label><input id="ws_phone" value="' + esc(_wsData.phone || '') + '"></div>' +
-      '<div><label>E-Mail</label><input id="ws_email" value="' + esc(_wsData.email || '') + '"></div></div>' +
-      '<label>Adresse</label><input id="ws_address" value="' + esc(_wsData.address || '') + '">' +
-      '<div class="row2"><div><label>PLZ</label><input id="ws_zip" value="' + esc(_wsData.zip || '') + '"></div>' +
-      '<div><label>Inhaber (für Impressum)</label><input id="ws_owner" value="' + esc(_wsData.owner || '') + '"></div></div>' +
-      '<label>USt-IdNr. (optional)</label><input id="ws_vat" value="' + esc(_wsData.vatId || '') + '">' +
-      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsNext(3)">Weiter →</button></div>', 'wide');
-  }
-  function wsStep4() {
-    var tpls = [['modern', 'Modern', 'Klar & frisch, blau'], ['bold', 'Bold', 'Kräftig, dunkler Hero'], ['classic', 'Klassisch', 'Seriös, serifenbetont']];
-    showModal('<h2>Website · Schritt 4/4 — Vorlage wählen</h2>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' + tpls.map(function (t) {
-        return '<label style="flex:1;min-width:140px;border:2px solid ' + (_wsData.template === t[0] ? '#1a5cff' : '#e3e9ef') + ';border-radius:10px;padding:12px;cursor:pointer;" onclick="_wsPick(\'' + t[0] + '\')" id="wstpl_' + t[0] + '">' +
-          '<b>' + t[1] + '</b><br><span style="font-size:12px;color:#789;">' + t[2] + '</span></label>';
-      }).join('') + '</div>' +
-      '<p style="font-size:12px;color:#789;margin-top:10px;">Die KI schreibt SEO-optimierte Texte aus deinen Angaben. Danach kannst du die Vorschau ansehen und veröffentlichen.</p>' +
-      '<div class="modal-buttons"><button class="secondary" onclick="wsBack()">← Zurück</button><button class="success" onclick="wsGenerate()">✨ Website generieren</button></div>', 'wide');
-  }
-  window._wsPick = function (t) { _wsData.template = t; wsStep4(); };
-  window.wsBack = function () { _wsStep = Math.max(0, _wsStep - 1); wsShowStep(); };
-  window.wsNext = function (step) {
-    if (step === 1) { _wsData.companyName = val('ws_company'); _wsData.branche = val('ws_branche'); _wsData.city = val('ws_city'); _wsData.slogan = val('ws_slogan'); if (!_wsData.companyName) { alert('Bitte Firmenname eingeben.'); return; } }
-    if (step === 2) { _wsData.services = (document.getElementById('ws_services').value || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean); _wsData.about = val('ws_about'); }
-    if (step === 3) { _wsData.phone = val('ws_phone'); _wsData.email = val('ws_email'); _wsData.address = val('ws_address'); _wsData.zip = val('ws_zip'); _wsData.owner = val('ws_owner'); _wsData.vatId = val('ws_vat'); }
-    _wsStep = Math.min(3, _wsStep + 1); wsShowStep();
-  };
-  window.wsGenerate = function () {
-    var biz = { companyName: _wsData.companyName, owner: _wsData.owner, branche: _wsData.branche, city: _wsData.city, phone: _wsData.phone, email: _wsData.email, address: _wsData.address, zip: _wsData.zip, vatId: _wsData.vatId };
-    showModal('<h2>✨ Website wird generiert …</h2><p>Die KI erstellt Texte und Layout. Das kann einen Moment dauern.</p>');
-    apiJson('/sites/generate', 'POST', { input: _wsData, business: biz, template: _wsData.template }).then(function (r) {
-      if (r.status !== 201) { toast('Generierung fehlgeschlagen (' + ((r.data && r.data.error) || r.status) + ').'); if (typeof closeModal === 'function') closeModal(); return; }
-      if (typeof closeModal === 'function') closeModal();
-      toast('✓ Website erstellt' + (r.data.aiUsed ? ' (KI-Texte).' : '.'));
-      wsPreview(r.data.id);
-      renderWebsiteTab();
-    });
-  };
-  window.wsPreview = function (id) {
-    apiJson('/sites/' + id, 'GET').then(function (r) {
-      if (!r.data || !r.data.site) { toast('Vorschau nicht verfügbar.'); return; }
-      var html = r.data.site.pages['index.html'] || '';
-      showModal('<h2>Vorschau</h2><iframe style="width:100%;height:70vh;border:1px solid #e3e9ef;border-radius:8px;" srcdoc="' + esc(html).replace(/&#39;/g, "'") + '"></iframe>' +
-        '<div class="modal-buttons"><button class="secondary" onclick="closeModal()">Schließen</button>' +
-        (r.data.site.status !== 'published' ? '<button class="success" onclick="closeModal();wsPublish(\'' + id + '\')">Veröffentlichen</button>' : '') + '</div>', 'xwide');
-    });
-  };
-  window.wsPublish = function (id) {
-    var domain = prompt('Optional: eigene Domain (z. B. www.meinbetrieb.de) — leer lassen für werkflow-Adresse:', '');
-    apiJson('/sites/' + id + '/publish', 'POST', { domain: domain || '' }).then(function (r) {
-      if (r.data && r.data.ok) { toast('✓ Veröffentlicht: ' + r.data.publicUrl); renderWebsiteTab(); }
-      else toast('Veröffentlichung fehlgeschlagen.');
-    });
-  };
-  window.wsUnpublish = function (id) { apiJson('/sites/' + id + '/unpublish', 'POST', {}).then(function () { toast('Website offline genommen.'); renderWebsiteTab(); }); };
 })();
 </script>
 
