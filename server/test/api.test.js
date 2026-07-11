@@ -861,6 +861,19 @@ test('KI-Lieferschein: ohne Key sauberer Fallback, Modul-Gate greift', async () 
   assert.ok(r.data.hint.includes('manuell'));
 });
 
+test('KI-Einrichtungs-Assistent: offen für Inhaber, ohne Key sauberer Fallback', async () => {
+  const s = await register('Setup GmbH', 'setup@test.de');
+  const img = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1]);
+  // Kein Modul-Gate (Ersteinrichtung), aber ohne KI-Key → configured:false
+  const r = await api('POST', '/api/t/ai/setup-doc', { token: s.accessToken, raw: img, headers: { 'Content-Type': 'image/jpeg', 'X-Doc-Hint': 'gewerbeanmeldung' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.configured, false);
+  assert.ok(r.data.hint.toLowerCase().includes('manuell'));
+  // Ohne Auth → 401
+  const noauth = await api('POST', '/api/t/ai/setup-doc', { raw: img, headers: { 'Content-Type': 'image/jpeg' } });
+  assert.equal(noauth.status, 401);
+});
+
 test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async () => {
   // / ist jetzt die Marketing-Website
   const site = await fetch(BASE + '/');

@@ -16892,6 +16892,16 @@
         <p style="font-size:12px; color:#666;">Startet den Einrichtungs-Assistenten erneut, um Firmendaten und Tagessätze schnell zu konfigurieren.</p>
         <button class="secondary" onclick="state.onboardingDone=false; openOnboardingWizard();">🪄 Onboarding starten</button>
       </div>
+      <div class="section" style="background:linear-gradient(135deg, var(--color-primary-soft, #eef4fb), var(--color-surface, #fff));">
+        <h3>🪄 KI-Einrichtungs-Assistent</h3>
+        <p style="font-size:12px; color:#666;">Lade deine Unterlagen hoch — <strong>Gewerbeanmeldung, Briefkopf, Logo, Leistungsverzeichnisse, Preislisten von Lieferanten</strong> (PDF/Foto). Die KI erkennt automatisch, worum es sich handelt, und baut Firmendaten, Logo, LVs und Materiallisten direkt ins System ein.</p>
+        <button class="success" onclick="openSetupAssistant()">🪄 Unterlagen hochladen &amp; automatisch einrichten</button>
+      </div>
+      <div class="section">
+        <h3>🌐 Unternehmens-Website</h3>
+        <p style="font-size:12px; color:#666;">Baue eine SEO-optimierte, DSGVO-konforme Website: zwei Voreinstellungen, drei frei wählbare Farben, Live-Vorschau, Veröffentlichung mit eigener Domain — komplett im Baukasten verwaltbar.</p>
+        <button class="secondary" onclick="openWebsiteBuilder()">🌐 Website-Baukasten öffnen</button>
+      </div>
       <div class="section">
         <h3>🧪 Beispieldaten</h3>
         <p style="font-size:12px; color:#666;">Zum Ausprobieren kannst du fertige Beispiel-Projekte, -Kunden und -Mitarbeiter laden — und jederzeit mit einem Klick wieder entfernen. Deine <strong>eigenen</strong> Daten bleiben nach der Testphase erhalten und stehen nach dem Kauf im selben Betrieb weiter zur Verfügung.</p>
@@ -50706,10 +50716,15 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
           '<div style="color:#667;font-size:12.5px;margin-top:5px;">Fertige Projekte, Kunden &amp; Mitarbeiter zum Erkunden. Du kannst sie später mit einem Klick löschen.</div>' +
         '</button>' +
       '</div>' +
+      (saas ? '<button id="demoKi" style="width:100%;margin-top:12px;text-align:left;border:1.5px solid #1f6feb;border-radius:14px;padding:16px;background:rgba(31,111,235,.05);cursor:pointer;">' +
+        '<div style="font-size:22px;">🪄</div><div style="font-weight:800;margin-top:6px;font-size:15px;">Mit meinen Unterlagen einrichten (KI)</div>' +
+        '<div style="color:#667;font-size:12.5px;margin-top:5px;">Lade Gewerbeanmeldung, Logo, Leistungsverzeichnisse &amp; Preislisten hoch — die KI baut alles automatisch ein.</div></button>' : '') +
       '<div style="margin-top:14px;font-size:11.5px;color:#8a97a6;text-align:center;">Deine Wahl kannst du in den Einstellungen jederzeit revidieren.</div>' +
       '</div>';
     document.body.appendChild(ov);
     function finish() { ov.remove(); if (typeof saveState === 'function') saveState(); if (typeof render === 'function') { try { render(); } catch (e) {} } cb(); }
+    var kiBtn = ov.querySelector('#demoKi');
+    if (kiBtn) kiBtn.onclick = function () { state.demoDataChoice = 'own'; finish(); setTimeout(function () { if (typeof openSetupAssistant === 'function') openSetupAssistant(); }, 300); };
     ov.querySelector('#demoOwn').onclick = function () { state.demoDataChoice = 'own'; finish(); };
     ov.querySelector('#demoExample').onclick = function () {
       try { loadExampleData(); } catch (e) {}
@@ -50717,6 +50732,310 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       finish();
     };
   };
+
+  // ==========================================================================
+  // KI-Einrichtungs-Assistent: Unterlagen hochladen → KI baut alles ins System.
+  // ==========================================================================
+  function _srv() { return (state.serverConfig) || {}; }
+  function _srvReady() { var c = _srv(); return !!(c.apiUrl && c.apiKey); }
+  async function _postDoc(file, hint) {
+    var c = _srv();
+    var r = await fetch(c.apiUrl + '/ai/setup-doc', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Doc-Hint': hint || '', 'Authorization': 'Bearer ' + c.apiKey },
+      body: file
+    });
+    return { status: r.status, data: await r.json().catch(function () { return {}; }) };
+  }
+  function _guessHint(name) {
+    var n = (name || '').toLowerCase();
+    if (/gewerbe|handelsregister|anmeldung|briefkopf|impressum/.test(n)) return 'gewerbeanmeldung';
+    if (/lv|leistung|aufmass|angebot/.test(n)) return 'leistungsverzeichnis';
+    if (/preis|katalog|artikel|datanorm/.test(n)) return 'preisliste';
+    if (/logo|signet|marke/.test(n)) return 'logo';
+    return '';
+  }
+  window._setupDocs = [];
+  window.openSetupAssistant = function () {
+    if (!_srvReady()) { alert('Der KI-Einrichtungs-Assistent ist nur im werkflow-Server-Betrieb verfügbar (nach Login).'); return; }
+    window._setupDocs = [];
+    var ov = document.createElement('div');
+    ov.id = 'setupAssistOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483400;background:rgba(12,25,40,.6);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;';
+    ov.innerHTML =
+      '<div style="max-width:760px;width:100%;background:#fff;border-radius:16px;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.4);margin:3vh 0;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;">🪄 KI-Einrichtungs-Assistent</h2>' +
+      '<button class="secondary small" onclick="document.getElementById(\'setupAssistOverlay\').remove()">✕ Schließen</button></div>' +
+      '<p style="color:#667;font-size:13.5px;margin:8px 0 14px;">Lade deine Unterlagen hoch — <b>Gewerbeanmeldung, Briefkopf, Logo, Leistungsverzeichnisse, Preislisten von Lieferanten</b> (PDF oder Foto). Die KI erkennt automatisch, worum es sich handelt, und baut die Daten ins System ein. Du prüfst kurz und bestätigst.</p>' +
+      '<label style="display:block;border:2px dashed #bcd; border-radius:12px; padding:22px; text-align:center; cursor:pointer; background:#f7fafc;">' +
+      '<input type="file" id="setupFiles" multiple accept="image/*,application/pdf" style="display:none;">' +
+      '<div style="font-size:30px;">📄⬆️</div><div style="font-weight:700;margin-top:6px;">Dateien wählen oder hierher ziehen</div>' +
+      '<div style="font-size:12px;color:#889;">Mehrere Dateien möglich · PDF, JPG, PNG</div></label>' +
+      '<div id="setupList" style="margin-top:14px;"></div>' +
+      '<div id="setupFoot" style="margin-top:16px;display:none;text-align:right;">' +
+      '<button class="success" id="setupApply">✓ Alles ins System übernehmen</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var input = ov.querySelector('#setupFiles');
+    var listEl = ov.querySelector('#setupList');
+    var foot = ov.querySelector('#setupFoot');
+    var dz = ov.querySelector('label');
+    dz.addEventListener('dragover', function (e) { e.preventDefault(); dz.style.background = '#eef7ff'; });
+    dz.addEventListener('dragleave', function () { dz.style.background = '#f7fafc'; });
+    dz.addEventListener('drop', function (e) { e.preventDefault(); dz.style.background = '#f7fafc'; handleFiles(e.dataTransfer.files); });
+    input.addEventListener('change', function () { handleFiles(input.files); });
+
+    async function handleFiles(files) {
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        var idx = window._setupDocs.length;
+        var dataUrl = await fileToDataUrl(file);
+        var entry = { file: file, name: file.name, type: file.type, dataUrl: dataUrl, status: 'loading', result: null, apply: true };
+        window._setupDocs.push(entry);
+        renderList();
+        try {
+          var blob = await (await fetch(dataUrl)).blob();
+          var r = await _postDoc(blob, _guessHint(file.name));
+          if (r.data && r.data.configured === false) { entry.status = 'noai'; entry.hint = r.data.hint; }
+          else if (r.data && r.data.ok) { entry.status = 'ok'; entry.result = r.data.data; }
+          else { entry.status = 'err'; entry.err = (r.data && r.data.error) || ('HTTP ' + r.status); }
+        } catch (e) { entry.status = 'err'; entry.err = String(e.message || e); }
+        // Bilder ohne erkannten Typ → als Logo anbieten
+        if (entry.result && entry.result.docType === 'logo' && /^image\//.test(file.type)) entry.result._isLogo = true;
+        if (/^image\//.test(file.type) && (!entry.result || entry.result.docType === 'sonstiges')) entry.canBeLogo = true;
+        renderList();
+      }
+    }
+    function _summary(e) {
+      if (e.status === 'loading') return '<span style="color:#889;">⏳ KI liest …</span>';
+      if (e.status === 'noai') return '<span style="color:#b26a00;">KI nicht aktiviert. ' + escapeHtml(e.hint || '') + '</span>';
+      if (e.status === 'err') return '<span style="color:#c0392b;">Fehler: ' + escapeHtml(e.err || '') + ' — bitte manuell erfassen.</span>';
+      var d = e.result || {};
+      var t = { gewerbeanmeldung: '🏢 Firmendaten', briefkopf: '🏢 Firmendaten', leistungsverzeichnis: '📋 Leistungsverzeichnis', preisliste: '🛒 Preisliste', logo: '🖼 Logo', sonstiges: '📄 Dokument' }[d.docType] || '📄 Dokument';
+      var extra = '';
+      if (d.docType === 'leistungsverzeichnis') extra = ' · ' + ((d.lvItems || []).length) + ' Positionen';
+      if (d.docType === 'preisliste') extra = ' · ' + ((d.priceItems || []).length) + ' Artikel' + (d.supplierName ? ' (' + escapeHtml(d.supplierName) + ')' : '');
+      return '<b>' + t + '</b>' + extra + '<div style="color:#667;font-size:12px;margin-top:2px;">' + escapeHtml(d.summary || '') + '</div>';
+    }
+    window._toggleSetup = function (i, v) { if (window._setupDocs[i]) window._setupDocs[i].apply = v; };
+    function renderList() {
+      if (!window._setupDocs.length) { listEl.innerHTML = ''; foot.style.display = 'none'; return; }
+      listEl.innerHTML = window._setupDocs.map(function (e, i) {
+        var canApply = e.status === 'ok' || e.canBeLogo;
+        return '<div style="display:flex;gap:10px;align-items:flex-start;border:1px solid #e3e9ef;border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
+          (/^image\//.test(e.type) ? '<img src="' + e.dataUrl + '" style="width:44px;height:44px;object-fit:contain;border:1px solid #eee;border-radius:6px;">' : '<div style="font-size:26px;">📄</div>') +
+          '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:12.5px;color:#334;word-break:break-all;">' + escapeHtml(e.name) + '</div>' + _summary(e) +
+          (e.canBeLogo && !(e.result && e.result._isLogo) ? '<label style="font-size:12px;display:inline-flex;gap:5px;margin-top:4px;"><input type="checkbox" onchange="window._setupDocs[' + i + '].asLogo=this.checked"> als Firmenlogo verwenden</label>' : '') +
+          '</div>' +
+          (canApply ? '<label style="font-size:12px;display:flex;gap:5px;align-items:center;"><input type="checkbox" ' + (e.apply ? 'checked' : '') + ' onchange="_toggleSetup(' + i + ',this.checked)"> übernehmen</label>' : '') +
+          '</div>';
+      }).join('');
+      var anyApplicable = window._setupDocs.some(function (e) { return e.status === 'ok' || e.canBeLogo; });
+      foot.style.display = anyApplicable ? 'block' : 'none';
+    }
+    ov.querySelector('#setupApply').onclick = function () {
+      var applied = applySetupDocs(window._setupDocs);
+      ov.remove();
+      if (typeof saveState === 'function') saveState();
+      if (typeof render === 'function') { try { render(); } catch (e) {} }
+      var msg = '✓ Übernommen: ' + applied.join(', ');
+      if (typeof mToast === 'function') mToast(msg); else alert(msg);
+    };
+  };
+  // Erkannte Daten ins System einbauen. Gibt eine Liste der übernommenen Bereiche zurück.
+  function applySetupDocs(docs) {
+    var applied = [];
+    if (!state.betriebsleiter) state.betriebsleiter = {};
+    if (!Array.isArray(state.lvLists)) state.lvLists = [];
+    if (!Array.isArray(state.materialLists)) state.materialLists = [];
+    if (!Array.isArray(state.suppliers)) state.suppliers = [];
+    (docs || []).forEach(function (e) {
+      if (!e.apply) return;
+      // Logo (Bild direkt übernehmen)
+      if ((e.asLogo || (e.result && e.result._isLogo)) && /^image\//.test(e.type)) {
+        state.betriebsleiter.logo = e.dataUrl; if (applied.indexOf('Logo') < 0) applied.push('Logo');
+      }
+      var d = e.result; if (!d) return;
+      if ((d.docType === 'gewerbeanmeldung' || d.docType === 'briefkopf') && d.company) {
+        var c = d.company, bl = state.betriebsleiter;
+        var map = { name: 'name', legalForm: 'legalForm', owner: 'owner', street: 'addrLine1', zip: 'plz', city: 'ort', phone: 'phone', email: 'email', website: 'website', ustId: 'ustId', taxNumber: 'taxNumber', iban: 'iban', bic: 'bic', bankName: 'bankName' };
+        Object.keys(map).forEach(function (k) { if (c[k]) bl[map[k]] = c[k]; });
+        // Zusätzlich Klartext-Adresse + Kontaktfelder, die die App nutzt
+        if (c.name) bl.parentCompany = bl.parentCompany || c.name;
+        if (c.email) bl.contactEmail = bl.contactEmail || c.email;
+        if (c.city || c.zip || c.street) bl.address = [c.street, [c.zip, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        if (Array.isArray(c.trades) && c.trades.length) bl.trades = c.trades;
+        if (applied.indexOf('Firmendaten') < 0) applied.push('Firmendaten');
+      }
+      if (d.docType === 'leistungsverzeichnis' && (d.lvItems || []).length) {
+        state.lvLists.push({
+          id: uid('lvl'), name: d.listTitle || ('LV ' + (e.name || '').replace(/\.[a-z]+$/i, '')), tradeKey: null, createdAt: Date.now(),
+          positions: d.lvItems.map(function (it) {
+            return { id: uid('lp'), nr: it.position || '', name: it.name || '', description: it.description || '', unit: it.unit || '', price: (it.unitPrice != null ? Number(it.unitPrice) : null), materialPct: null, materialAmount: null };
+          })
+        });
+        if (applied.indexOf('Leistungsverzeichnis') < 0) applied.push('Leistungsverzeichnis');
+      }
+      if (d.docType === 'preisliste' && (d.priceItems || []).length) {
+        var supId = null;
+        if (d.supplierName) {
+          var existing = state.suppliers.find(function (s) { return (s.name || '').toLowerCase() === d.supplierName.toLowerCase(); });
+          if (existing) supId = existing.id;
+          else { supId = uid('sup'); state.suppliers.push({ id: supId, name: d.supplierName, createdAt: Date.now() }); }
+        }
+        state.materialLists.push({
+          id: uid('ml'), name: d.listTitle || (d.supplierName ? 'Preisliste ' + d.supplierName : 'Preisliste'), tradeKey: null, supplierId: supId, createdAt: Date.now(),
+          positions: d.priceItems.map(function (it) {
+            return { id: uid('lp'), nr: it.articleNo || '', artNr: it.articleNo || '', name: it.name || '', unit: it.unit || '', price: (it.price != null ? Number(it.price) : null), materialPct: null, materialAmount: null };
+          })
+        });
+        if (applied.indexOf('Preisliste') < 0) applied.push('Preisliste');
+      }
+    });
+    if (!applied.length) applied.push('nichts (bitte Auswahl prüfen)');
+    return applied;
+  }
+
+  // ==========================================================================
+  // Website-Baukasten: SEO-Website mit 2 Voreinstellungen + 3 Farben + Domain.
+  // ==========================================================================
+  var WF_PRESETS = {
+    modern: { name: 'Modern', colors: { primary: '#1a5cff', secondary: '#0b1f3a', accent: '#12b981' } },
+    classic: { name: 'Klassisch', colors: { primary: '#2e6b4f', secondary: '#20302a', accent: '#c08a2d' } }
+  };
+  window._wfSite = null;
+  async function _wfApi(method, path, body) {
+    var c = _srv();
+    var r = await fetch(c.apiUrl + path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + c.apiKey },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    return { status: r.status, data: await r.json().catch(function () { return {}; }) };
+  }
+  window.openWebsiteBuilder = function () {
+    if (!_srvReady()) { alert('Der Website-Baukasten ist nur im werkflow-Server-Betrieb verfügbar (nach Login).'); return; }
+    var ov = document.createElement('div');
+    ov.id = 'wfBuilderOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483400;background:rgba(12,25,40,.6);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto;';
+    var bl = state.betriebsleiter || {};
+    var input = {
+      companyName: bl.name || bl.parentCompany || '', branche: (bl.trades && bl.trades[0]) || '',
+      city: bl.ort || '', slogan: '', about: '', phone: bl.phone || '', email: bl.email || bl.contactEmail || '',
+      services: (bl.trades || []).join('\n')
+    };
+    var preset = 'modern';
+    var colors = Object.assign({}, WF_PRESETS.modern.colors);
+    ov.innerHTML =
+      '<div style="max-width:960px;width:100%;background:#fff;border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.4);margin:2vh 0;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;">🌐 Unternehmens-Website — Baukasten</h2>' +
+      '<button class="secondary small" onclick="document.getElementById(\'wfBuilderOverlay\').remove()">✕ Schließen</button></div>' +
+      '<div id="wfBody" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px;">' +
+      '<div>' +
+        '<h4 style="margin:0 0 8px;">1 · Inhalte</h4>' +
+        _wfField('Firmenname', 'wfCompany', input.companyName) +
+        _wfField('Branche / Gewerk', 'wfBranche', input.branche) +
+        _wfField('Ort', 'wfCity', input.city) +
+        _wfField('Slogan (optional)', 'wfSlogan', input.slogan) +
+        _wfArea('Leistungen (eine pro Zeile)', 'wfServices', input.services) +
+        _wfArea('Über uns (optional)', 'wfAbout', input.about) +
+        _wfField('Telefon', 'wfPhone', input.phone) +
+        _wfField('E-Mail', 'wfEmail', input.email) +
+      '</div>' +
+      '<div>' +
+        '<h4 style="margin:0 0 8px;">2 · Voreinstellung</h4>' +
+        '<div id="wfPresets" style="display:flex;gap:8px;">' +
+          Object.keys(WF_PRESETS).map(function (k) { return '<button type="button" class="wfPreset ' + (k === preset ? 'on' : '') + '" data-p="' + k + '" style="flex:1;padding:10px;border:1.5px solid ' + (k === preset ? '#16324e' : '#dfe6ee') + ';border-radius:10px;background:' + (k === preset ? '#16324e' : '#fff') + ';color:' + (k === preset ? '#fff' : '#334') + ';font-weight:700;cursor:pointer;">' + WF_PRESETS[k].name + '</button>'; }).join('') +
+        '</div>' +
+        '<h4 style="margin:16px 0 8px;">3 · Farben</h4>' +
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;">' +
+          _wfColor('Primär', 'wfC1', colors.primary) + _wfColor('Sekundär', 'wfC2', colors.secondary) + _wfColor('Akzent', 'wfC3', colors.accent) +
+        '</div>' +
+        '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="success" id="wfGen">✨ Website erzeugen / aktualisieren</button>' +
+        '</div>' +
+        '<div id="wfStatus" style="font-size:12.5px;color:#667;margin-top:8px;min-height:16px;"></div>' +
+        '<h4 style="margin:16px 0 8px;">4 · Veröffentlichen &amp; Domain</h4>' +
+        _wfField('Eigene Domain (optional)', 'wfDomain', '') +
+        '<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">' +
+          '<button class="secondary" id="wfPublish" disabled>🚀 Veröffentlichen</button>' +
+          '<a id="wfOpen" class="secondary" style="display:none;" target="_blank">↗ Live ansehen</a>' +
+        '</div>' +
+        '<p style="font-size:11.5px;color:#889;margin-top:8px;">Eigene Domain: einen CNAME/A-Record auf die werkflow-Adresse zeigen lassen — Anleitung nach dem Veröffentlichen. Impressum &amp; Datenschutz werden DSGVO-konform automatisch erzeugt.</p>' +
+      '</div>' +
+      '</div>' +
+      '<div style="margin-top:16px;"><h4 style="margin:0 0 8px;">Vorschau</h4>' +
+      '<iframe id="wfPreview" style="width:100%;height:420px;border:1px solid #dfe6ee;border-radius:10px;background:#fff;"></iframe></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.querySelectorAll('.wfPreset').forEach(function (b) {
+      b.onclick = function () {
+        preset = b.dataset.p; colors = Object.assign({}, WF_PRESETS[preset].colors);
+        ov.querySelector('#wfC1').value = colors.primary; ov.querySelector('#wfC2').value = colors.secondary; ov.querySelector('#wfC3').value = colors.accent;
+        ov.querySelectorAll('.wfPreset').forEach(function (x) { var on = x === b; x.style.background = on ? '#16324e' : '#fff'; x.style.color = on ? '#fff' : '#334'; x.style.borderColor = on ? '#16324e' : '#dfe6ee'; });
+      };
+    });
+    function readInput() {
+      return {
+        companyName: ov.querySelector('#wfCompany').value.trim(),
+        branche: ov.querySelector('#wfBranche').value.trim(),
+        city: ov.querySelector('#wfCity').value.trim(),
+        slogan: ov.querySelector('#wfSlogan').value.trim(),
+        services: ov.querySelector('#wfServices').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean),
+        about: ov.querySelector('#wfAbout').value.trim(),
+        phone: ov.querySelector('#wfPhone').value.trim(),
+        email: ov.querySelector('#wfEmail').value.trim()
+      };
+    }
+    var status = ov.querySelector('#wfStatus');
+    ov.querySelector('#wfGen').onclick = async function () {
+      status.textContent = '⏳ Website wird erzeugt …';
+      var cols = { primary: ov.querySelector('#wfC1').value, secondary: ov.querySelector('#wfC2').value, accent: ov.querySelector('#wfC3').value };
+      var r = await _wfApi('POST', '/sites/generate', { input: readInput(), business: readInput(), template: preset, colors: cols, id: window._wfSite && window._wfSite.id });
+      if (r.status === 403) { status.innerHTML = '<span style="color:#b26a00;">Modul „Website-Baukasten" ist nicht freigeschaltet.</span> '; _wfOfferUnlock(status); return; }
+      if (!(r.data && r.data.ok)) { status.innerHTML = '<span style="color:#c0392b;">Fehler: ' + escapeHtml((r.data && r.data.error) || r.status) + '</span>'; return; }
+      window._wfSite = { id: r.data.id, slug: r.data.slug, previewUrl: r.data.previewUrl };
+      // Entwurf sofort per srcdoc anzeigen (öffentliche URL greift erst nach Veröffentlichung).
+      if (r.data.previewHtml) ov.querySelector('#wfPreview').srcdoc = r.data.previewHtml;
+      else ov.querySelector('#wfPreview').src = r.data.previewUrl + '?t=' + Date.now();
+      ov.querySelector('#wfPublish').disabled = false;
+      status.innerHTML = r.data.aiUsed ? '✓ Mit KI-Texten erzeugt.' : '✓ Erzeugt (KI-Texte inaktiv — Standardtexte aus deinen Angaben).';
+    };
+    ov.querySelector('#wfPublish').onclick = async function () {
+      if (!window._wfSite) return;
+      var domain = ov.querySelector('#wfDomain').value.trim();
+      var r = await _wfApi('POST', '/sites/' + window._wfSite.id + '/publish', { domain: domain });
+      if (!(r.data && r.data.ok)) { status.innerHTML = '<span style="color:#c0392b;">Veröffentlichen fehlgeschlagen.</span>'; return; }
+      status.innerHTML = '✓ Veröffentlicht.' + (r.data.domain ? ' Domain: ' + escapeHtml(r.data.domain) : '');
+      var a = ov.querySelector('#wfOpen'); a.href = r.data.publicUrl; a.style.display = 'inline-block'; a.textContent = '↗ Live ansehen';
+    };
+    // Bestehende Website laden (falls vorhanden) — Entwurf per srcdoc anzeigen.
+    _wfApi('GET', '/sites').then(function (r) {
+      var sites = (r.data && r.data.sites) || [];
+      if (!sites.length) return;
+      var s = sites[0]; window._wfSite = { id: s.id, slug: s.slug };
+      ov.querySelector('#wfPublish').disabled = false;
+      if (s.domain) ov.querySelector('#wfDomain').value = s.domain;
+      _wfApi('GET', '/sites/' + s.id).then(function (d) {
+        var site = d.data && d.data.site;
+        var html = site && site.pages && site.pages['index.html'];
+        if (html) ov.querySelector('#wfPreview').srcdoc = html;
+        if (site && site.template) {
+          var pb = ov.querySelector('.wfPreset[data-p="' + site.template + '"]'); if (pb) pb.click();
+        }
+      });
+    });
+  };
+  function _wfOfferUnlock(status) {
+    if (window.WERKOS && WERKOS.buyModule) {
+      var b = document.createElement('button'); b.className = 'success small'; b.textContent = '🔓 Website-Baukasten freischalten';
+      b.onclick = function () { WERKOS.buyModule('website').then(function (r) { if (r && r.ok && !r.redirect) status.textContent = '✓ Freigeschaltet — bitte „Website erzeugen" erneut klicken.'; }); };
+      status.appendChild(b);
+    }
+  }
+  function _wfField(label, id, val) { return '<label style="display:block;font-size:12px;font-weight:600;color:#40506a;margin:8px 0 3px;">' + label + '</label><input id="' + id + '" value="' + escapeHtml(val || '') + '" style="width:100%;padding:9px;border:1px solid #cdd6e0;border-radius:8px;font-size:14px;">'; }
+  function _wfArea(label, id, val) { return '<label style="display:block;font-size:12px;font-weight:600;color:#40506a;margin:8px 0 3px;">' + label + '</label><textarea id="' + id + '" rows="3" style="width:100%;padding:9px;border:1px solid #cdd6e0;border-radius:8px;font-size:14px;">' + escapeHtml(val || '') + '</textarea>'; }
+  function _wfColor(label, id, val) { return '<div style="text-align:center;"><label style="font-size:11px;color:#667;display:block;">' + label + '</label><input type="color" id="' + id + '" value="' + escapeHtml(val) + '" style="width:52px;height:38px;border:1px solid #cdd6e0;border-radius:8px;cursor:pointer;"></div>'; }
 
   window.openOnboardingWizard = function() {
     _ob = {

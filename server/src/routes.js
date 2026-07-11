@@ -705,6 +705,21 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, result);
   }
 
+  // KI-Einrichtungs-Assistent: hochgeladenes Dokument klassifizieren + extrahieren
+  // (Gewerbeanmeldung/Briefkopf → Firmendaten, LV → Positionen, Preisliste → Artikel).
+  // Für die Ersteinrichtung offen (kein Modul-Gate). ?hint= gibt einen Typ-Tipp.
+  if (pathname === '/api/t/ai/setup-doc' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return;
+    if (!ai.isConfigured()) return send(res, 200, { configured: false, hint: 'KI-Einrichtung ist nicht aktiviert — bitte die Daten manuell erfassen (deine Datei bleibt als Anhang gespeichert).' });
+    const buf = await readBody(req, cfg.MAX_AI_IMAGE_BYTES + 1024);
+    const ctype = (req.headers['content-type'] || 'image/jpeg').split(';')[0];
+    const hint = String(req.headers['x-doc-hint'] || '');
+    const result = await ai.extractSetupDocument(buf, ctype, hint);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'ai.setup-doc', { ok: !!result.ok, docType: result.data ? result.data.docType : null });
+    return send(res, 200, result);
+  }
+
   if (pathname === '/api/t/files' && m === 'GET') {
     const ctx = requireAuth(req, res); if (!ctx) return;
     return send(res, 200, { files: dbm.listFiles(ctx.tenant.id) });
@@ -1371,11 +1386,11 @@ async function handleIntegrations(req, res, pathname, m) {
     let slug = sitegen.slugify(b.slug || biz.companyName || biz.name || 'website');
     let n = 1; while (dbm.slugTaken(slug, ctx.tenant.id)) slug = sitegen.slugify((biz.companyName || 'website')) + '-' + (++n);
     const canonical = reqBaseUrl(req) + '/api/public/site/' + slug + '/index.html';
-    const rendered = sitegen.renderSite(aiContent, biz, { template: b.template || 'modern', input, canonical });
+    const rendered = sitegen.renderSite(aiContent, biz, { template: b.template || 'modern', colors: b.colors || {}, input, canonical });
     const pages = Object.assign({}, rendered.pages, { 'sitemap.xml': rendered['sitemap.xml'], 'robots.txt': rendered['robots.txt'] });
     const siteId = dbm.upsertSite({ id: b.id || undefined, tenantId: ctx.tenant.id, slug, template: rendered.template, status: 'draft', input, content: rendered.content, pages });
     dbm.audit(ctx.tenant.id, ctx.user.id, 'site.generated', { slug, aiUsed });
-    return send(res, 201, { ok: true, id: siteId, slug, template: rendered.template, aiUsed, previewUrl: reqBaseUrl(req) + '/api/public/site/' + slug + '/index.html', content: rendered.content });
+    return send(res, 201, { ok: true, id: siteId, slug, template: rendered.template, colors: rendered.colors, aiUsed, previewUrl: reqBaseUrl(req) + '/api/public/site/' + slug + '/index.html', previewHtml: rendered.pages['index.html'], content: rendered.content });
   }
   const siteId = pathname.match(/^\/api\/t\/sites\/([^/]+)$/);
   if (siteId && m === 'GET') {

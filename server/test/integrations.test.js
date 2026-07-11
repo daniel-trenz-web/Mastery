@@ -162,6 +162,22 @@ test('Website-Generator: valides HTML, SEO, Consent, Rechtstexte, 3 Vorlagen', (
   assert.ok(!rx.pages['index.html'].includes('<script>x</script>'));
 });
 
+test('Website-Baukasten: 2 Voreinstellungen + 3 frei wählbare Farben', () => {
+  assert.deepEqual(sitegen.PRESETS.map((p) => p.key), ['modern', 'classic']);
+  const biz = { companyName: 'Malerbetrieb Muster', city: 'Köln', branche: 'Maler' };
+  const r = sitegen.renderSite(null, biz, { template: 'classic', colors: { primary: '#c0392b', secondary: '#1b1b1b', accent: '#e0a800' } });
+  assert.equal(r.template, 'classic');
+  assert.equal(r.colors.primary, '#c0392b');
+  assert.equal(r.colors.accent, '#e0a800');
+  const css = r.pages['index.html'];
+  assert.ok(css.includes('#c0392b'), 'Primärfarbe im CSS');
+  assert.ok(css.includes('#e0a800'), 'Akzentfarbe im CSS');
+  // ungültige Farbe → Preset-Default (kein Crash)
+  const r2 = sitegen.renderSite(null, biz, { template: 'modern', colors: { primary: 'rot; }evil', secondary: '', accent: '#12b981' } });
+  assert.ok(!r2.pages['index.html'].includes('evil'), 'ungültige Farbe wird verworfen');
+  assert.equal(r2.colors.primary, '#1a5cff', 'Fallback auf Preset-Primärfarbe');
+});
+
 const xrechnung = require('../src/integrations/xrechnung');
 const sepa = require('../src/integrations/sepa');
 const gaeb = require('../src/integrations/gaeb');
