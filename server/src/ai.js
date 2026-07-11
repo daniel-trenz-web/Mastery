@@ -99,6 +99,65 @@ const WEBSITE_TOOL = {
   },
 };
 
+// Universelles Schema für den KI-Einrichtungs-Assistenten: klassifiziert ein
+// hochgeladenes Dokument und extrahiert die passenden strukturierten Daten.
+const SETUP_DOC_TOOL = {
+  name: 'einrichtung_dokument',
+  description: 'Ein hochgeladenes Betriebsdokument klassifizieren und die relevanten Daten für die Systemeinrichtung strukturiert zurückgeben.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      docType: {
+        type: 'string',
+        enum: ['gewerbeanmeldung', 'briefkopf', 'leistungsverzeichnis', 'preisliste', 'logo', 'sonstiges'],
+        description: 'Art des Dokuments. gewerbeanmeldung/briefkopf → Firmendaten; leistungsverzeichnis → LV-Positionen; preisliste → Artikel mit Preisen; logo → Bild/Grafik ohne Text.',
+      },
+      summary: { type: 'string', description: 'Ein kurzer deutscher Satz, was erkannt wurde.' },
+      company: {
+        type: 'object',
+        description: 'Firmen-/Stammdaten (nur bei gewerbeanmeldung/briefkopf).',
+        properties: {
+          name: { type: 'string' }, legalForm: { type: 'string', description: 'Rechtsform, z. B. GmbH, e.K., Einzelunternehmen' },
+          owner: { type: 'string', description: 'Inhaber/Geschäftsführer' },
+          street: { type: 'string' }, zip: { type: 'string' }, city: { type: 'string' },
+          phone: { type: 'string' }, email: { type: 'string' }, website: { type: 'string' },
+          ustId: { type: 'string', description: 'USt-IdNr. (DE…)' }, taxNumber: { type: 'string', description: 'Steuernummer' },
+          iban: { type: 'string' }, bic: { type: 'string' }, bankName: { type: 'string' },
+          trades: { type: 'array', items: { type: 'string' }, description: 'Gewerke/Tätigkeiten' },
+        },
+      },
+      lvItems: {
+        type: 'array', description: 'Leistungsverzeichnis-Positionen (nur bei leistungsverzeichnis).',
+        items: {
+          type: 'object',
+          properties: {
+            position: { type: 'string', description: 'Positionsnummer, falls vorhanden' },
+            name: { type: 'string' }, description: { type: 'string' },
+            unit: { type: 'string', description: 'Einheit (m², m, Stk, h, psch …)' },
+            qty: { type: 'number' }, unitPrice: { type: 'number', description: 'Einheitspreis netto in Euro, falls erkennbar' },
+          },
+          required: ['name'],
+        },
+      },
+      priceItems: {
+        type: 'array', description: 'Artikel einer Lieferanten-Preisliste (nur bei preisliste).',
+        items: {
+          type: 'object',
+          properties: {
+            articleNo: { type: 'string' }, name: { type: 'string' },
+            unit: { type: 'string' }, price: { type: 'number', description: 'Einzelpreis netto in Euro' },
+          },
+          required: ['name'],
+        },
+      },
+      supplierName: { type: 'string', description: 'Name des Lieferanten (bei preisliste).' },
+      listTitle: { type: 'string', description: 'Titel/Bezeichnung der Liste (LV oder Preisliste).' },
+      confidence: { type: 'number', description: 'Lesbarkeit 0..1' },
+    },
+    required: ['docType', 'summary'],
+  },
+};
+
 function isConfigured() { return !!cfg.AI_API_KEY; }
 
 async function callClaude(body) {
@@ -194,4 +253,32 @@ async function generateWebsiteContent(input) {
   });
 }
 
-module.exports = { isConfigured, extractDeliveryNote, extractIncomingInvoice, generateWebsiteContent };
+// KI-Einrichtungs-Assistent: ein hochgeladenes Dokument (Foto/PDF) klassifizieren
+// und die für die Systemeinrichtung relevanten Daten strukturiert extrahieren.
+// hint: optionaler Typ-Hinweis vom Nutzer ('gewerbeanmeldung'|'leistungsverzeichnis'|'preisliste'|…).
+async function extractSetupDocument(buffer, mediaType, hint) {
+  if (!isConfigured()) return { configured: false };
+  if (buffer.length > cfg.MAX_AI_IMAGE_BYTES) return { configured: true, ok: false, error: 'file-too-large' };
+  const hintTxt = hint ? ('\nDer Nutzer vermutet: „' + String(hint).slice(0, 40) + '". Prüfe das, korrigiere bei Bedarf.') : '';
+  return callClaude({
+    model: cfg.AI_MODEL,
+    max_tokens: 4000,
+    tools: [SETUP_DOC_TOOL],
+    tool_choice: { type: 'tool', name: 'einrichtung_dokument' },
+    messages: [{
+      role: 'user',
+      content: [
+        mediaBlock(buffer, mediaType),
+        {
+          type: 'text',
+          text: 'Dies ist ein Betriebsdokument für die Ersteinrichtung einer Handwerker-Software. '
+            + 'Bestimme die Dokumentart und extrahiere NUR die tatsächlich erkennbaren Daten '
+            + '(Firmenstammdaten, LV-Positionen oder Lieferanten-Preisliste). Erfinde nichts. '
+            + 'Beträge in Euro netto.' + hintTxt,
+        },
+      ],
+    }],
+  });
+}
+
+module.exports = { isConfigured, extractDeliveryNote, extractIncomingInvoice, generateWebsiteContent, extractSetupDocument };

@@ -191,6 +191,34 @@ Mandanten-Detail (Nutzer, Abo inkl. Rechnungsadresse, letzte Aktivität),
 Vertriebs-Angebote (erstellen/widerrufen/Status) und Lead-Verwaltung
 (Consent-Nachweis, DSGVO-Löschung).
 
+## KI-Einrichtungs-Assistent (Unterlagen hochladen → Auto-Einrichtung)
+
+Unter **⚙ Einstellungen → 🪄 KI-Einrichtungs-Assistent** (und beim ersten Start als
+Option) lädt der Betrieb seine Unterlagen als Datei hoch — **Gewerbeanmeldung/Briefkopf,
+Logo, Leistungsverzeichnisse, Preislisten von Lieferanten** (PDF/Foto). Die KI
+klassifiziert jedes Dokument und extrahiert die Daten strukturiert; der Nutzer prüft kurz
+und übernimmt:
+
+- **Firmendaten** → `betriebsleiter` + Rechnungs-Stammdaten (Name, Adresse, USt-IdNr., IBAN …)
+- **Logo** → als Firmenlogo (Briefkopf/PDF/Angebote)
+- **Leistungsverzeichnis** → neue LV-Liste mit Positionen
+- **Preisliste** → neue Materialliste + Lieferant
+
+Server: `POST /api/t/ai/setup-doc` (`ai.extractSetupDocument`, forcierter Tool-Use).
+Ohne `WERKOS_AI_KEY` sauberer Fallback (`configured:false`, manuelle Erfassung); Logo geht
+immer (clientseitig). Nur Inhaber/Büro.
+
+## Unternehmens-Website: Baukasten (2 Voreinstellungen, 3 Farben, Domain)
+
+Unter **⚙ Einstellungen → 🌐 Unternehmens-Website** baut der Betrieb eine SEO-optimierte,
+DSGVO-konforme Website: **zwei Voreinstellungen** (Modern/Klassisch), **drei frei wählbare
+Farben** (Primär/Sekundär/Akzent), Live-Vorschau (per `srcdoc`, auch als Entwurf),
+Veröffentlichung mit **eigener Domain**. Inhalte werden aus den Firmendaten vorbefüllt; mit
+`WERKOS_AI_KEY` schreibt die KI verkaufsstarke Texte, sonst Standardtexte aus den Angaben.
+Impressum & Datenschutz werden automatisch erzeugt. Server: `sitegen` (`PRESETS` + 3 Farben),
+`POST /api/t/sites/generate` (gibt `previewHtml` zurück), `…/publish` (mit Domain),
+öffentlich unter `/api/public/site/<slug>`. Gated über das Modul `website`.
+
 ## Einkauf & Lager: Materialkreislauf + Lieferschein-Foto
 
 - **Materialverbrauch auf Projekt buchen** (`bookLagerVerbrauch`): Menge wird

@@ -79,6 +79,12 @@ ${canonical ? '<link rel="canonical" href="' + attr(canonical) + '">' : ''}
 </head>`;
 }
 
+function hexA(hex, a) {
+  var h = String(hex || '').replace('#', '');
+  if (h.length !== 6) return hex;
+  var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
 function css(t) {
   return `*{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
 body{font-family:${t.font};color:${t.dark};background:${t.bg};line-height:1.6}
@@ -88,14 +94,17 @@ header.nav{position:sticky;top:0;background:rgba(255,255,255,.95);backdrop-filte
 header.nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
 .brand{font-weight:800;font-size:20px;color:${t.dark}}
 nav.menu a{margin-left:22px;color:${t.dark};font-weight:600;font-size:15px}
-.btn{display:inline-block;background:${t.primary};color:#fff;padding:12px 22px;border-radius:${t.radius};font-weight:700;border:none;cursor:pointer}
-.btn:hover{opacity:.92;text-decoration:none}
-.hero{padding:72px 0;${t.hero === 'cover' ? 'background:' + t.dark + ';color:#fff;' : 'background:' + t.soft + ';'}}
+.btn{display:inline-block;background:${t.primary};color:#fff;padding:12px 22px;border-radius:${t.radius};font-weight:700;border:none;cursor:pointer;transition:background .15s,transform .1s}
+.btn:hover{background:${t.accent};text-decoration:none;transform:translateY(-1px)}
+.hero{padding:72px 0;${t.hero === 'cover'
+    ? 'background:linear-gradient(135deg,' + t.dark + ',' + t.accent + ');color:#fff;'
+    : 'background:linear-gradient(160deg,' + t.soft + ' 60%,' + hexA(t.accent, 0.10) + ');'}}
 .hero h1{font-size:clamp(30px,5vw,52px);line-height:1.1;margin-bottom:16px}
 .hero p{font-size:20px;max-width:640px;${t.hero === 'centered' ? 'margin:0 auto 26px;' : 'margin-bottom:26px;'}opacity:.9}
 ${t.hero === 'centered' ? '.hero .wrap{text-align:center}' : ''}
 section{padding:60px 0}
-h2{font-size:clamp(24px,3.5vw,34px);margin-bottom:26px}${t.hero === 'centered' ? 'section{text-align:center}' : ''}
+h2{font-size:clamp(24px,3.5vw,34px);margin-bottom:26px;position:relative}
+h2::after{content:"";display:block;width:52px;height:4px;border-radius:3px;background:${t.accent};margin-top:12px;${t.hero === 'centered' ? 'margin-left:auto;margin-right:auto;' : ''}}${t.hero === 'centered' ? 'section{text-align:center}' : ''}
 .grid{display:grid;gap:22px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
 .card{background:${t.soft};border:1px solid #e8edf3;border-radius:${t.radius};padding:24px}
 .card .ic{font-size:32px;display:block;margin-bottom:10px}
@@ -215,10 +224,26 @@ function datenschutzHtml(biz) {
 <p style="color:#889;font-size:13px">Automatisch generierter Basistext – bitte vor Veröffentlichung rechtlich prüfen lassen.</p>`;
 }
 
+function validColor(s) {
+  return typeof s === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.trim()) ? s.trim().toLowerCase() : null;
+}
+// Zwei Voreinstellungen (für den Baukasten). „bold" bleibt für Bestands-Sites erhalten.
+const PRESETS = [
+  { key: 'modern', name: 'Modern', desc: 'Klar, luftig, serifenlos — für die meisten Betriebe', colors: { primary: '#1a5cff', secondary: '#0b1f3a', accent: '#12b981' } },
+  { key: 'classic', name: 'Klassisch', desc: 'Seriös mit Serifen — für Handwerk mit Tradition', colors: { primary: '#2e6b4f', secondary: '#20302a', accent: '#c08a2d' } },
+];
+
 function renderSite(aiContent, biz, opts) {
   const o = opts || {};
   const tplKey = TEMPLATES[o.template] ? o.template : 'modern';
-  const tpl = TEMPLATES[tplKey];
+  const baseTpl = TEMPLATES[tplKey];
+  // Drei frei wählbare Farben überschreiben die Preset-Defaults.
+  const c = o.colors || {};
+  const tpl = Object.assign({}, baseTpl, {
+    primary: validColor(c.primary) || baseTpl.primary,
+    dark: validColor(c.secondary) || baseTpl.dark,
+    accent: validColor(c.accent) || validColor(c.primary) || baseTpl.primary,
+  });
   const content = mergeContent(aiContent, o.input || biz);
   const canonical = o.canonical || '';
   const pages = {
@@ -230,7 +255,7 @@ function renderSite(aiContent, biz, opts) {
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` +
     ['index.html', 'impressum.html', 'datenschutz.html'].map((p) => `<url><loc>${esc(base + '/' + p)}</loc></url>`).join('') + '</urlset>';
   const robots = 'User-agent: *\nAllow: /\n' + (base ? 'Sitemap: ' + base + '/sitemap.xml\n' : '');
-  return { template: tplKey, slug: slugify(biz.companyName || biz.name), pages, 'sitemap.xml': sitemap, 'robots.txt': robots, content };
+  return { template: tplKey, colors: { primary: tpl.primary, secondary: tpl.dark, accent: tpl.accent }, slug: slugify(biz.companyName || biz.name), pages, 'sitemap.xml': sitemap, 'robots.txt': robots, content };
 }
 
-module.exports = { renderSite, contentFromInput, mergeContent, slugify, TEMPLATES };
+module.exports = { renderSite, contentFromInput, mergeContent, slugify, validColor, TEMPLATES, PRESETS };
