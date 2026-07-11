@@ -402,23 +402,49 @@ test('Module: Tarif schaltet automatisch frei, Host-Override gewinnt', async () 
   acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
 
-  // Host schaltet zusätzlich "geld" frei, sperrt "zeiten"
+  // Host schaltet zusätzlich "geld" frei, sperrt "zeiten" (Tri-State: true→on, false→off normalisiert)
   const ov = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/modules', {
     headers: { 'X-Admin-Token': 'test-admin-token' },
     body: { overrides: { geld: true, zeiten: false, quatsch: true } },
   });
   assert.equal(ov.status, 200);
   assert.deepEqual(ov.data.effective_modules, ['geld'], 'Override: +geld, -zeiten, unbekannte Keys ignoriert');
+  // module_states: geld nutzbar, zeiten ausgeblendet, restliche gesperrt (Standard)
+  assert.equal(ov.data.module_states.geld, 'on');
+  assert.equal(ov.data.module_states.zeiten, 'off');
+  assert.equal(ov.data.module_states.auftraege, 'locked', 'nicht im Tarif, kein Override → sichtbar-gesperrt');
+
+  // Account liefert moduleStates für die App
+  acc = await api('GET', '/api/account', { token: s.accessToken });
+  assert.equal(acc.data.tenant.moduleStates.geld, 'on');
+  assert.equal(acc.data.tenant.moduleStates.zeiten, 'off');
+
+  // Tri-State per {module,state}: zeiten von 'off' auf 'locked' (sichtbar, aber gesperrt)
+  const lock = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/modules', {
+    headers: { 'X-Admin-Token': 'test-admin-token' },
+    body: { module: 'zeiten', state: 'locked' },
+  });
+  assert.equal(lock.status, 200);
+  assert.equal(lock.data.module_states.zeiten, 'locked', 'jetzt sichtbar-gesperrt statt aus');
 
   // Upgrade auf BETRIEB: Tarif-Module + Overrides kombiniert
   await checkout(s.accessToken, 'BETRIEB');
   acc = await api('GET', '/api/account', { token: s.accessToken });
-  assert.deepEqual(acc.data.tenant.modules.sort(), ['auftraege', 'geld'], 'zeiten bleibt per Override gesperrt');
+  assert.deepEqual(acc.data.tenant.modules.sort(), ['auftraege', 'geld'], 'zeiten bleibt per Override gesperrt (locked ≠ nutzbar)');
+  assert.equal(acc.data.tenant.moduleStates.zeiten, 'locked');
 
-  // Admin-Liste zeigt Overrides + effektive Module
+  // 'default' entfernt Override → zeiten fällt auf Tarif (BETRIEB enthält zeiten) zurück
+  const reset = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/modules', {
+    headers: { 'X-Admin-Token': 'test-admin-token' },
+    body: { module: 'zeiten', state: 'default' },
+  });
+  assert.equal(reset.data.module_states.zeiten, 'on', 'ohne Override greift der Tarif → nutzbar');
+
+  // Admin-Liste zeigt Overrides (normalisiert) + effektive Module + module_states
   const list = await api('GET', '/api/admin/tenants', { headers: { 'X-Admin-Token': 'test-admin-token' } });
   const me = list.data.tenants.find((t) => t.id === s.tenant.id);
-  assert.deepEqual(me.module_overrides, { geld: true, zeiten: false });
+  assert.deepEqual(me.module_overrides, { geld: 'on' }, 'zeiten-Override wurde per default entfernt');
+  assert.equal(me.module_states.geld, 'on');
 });
 
 // ---------------------------------------------------------------------------

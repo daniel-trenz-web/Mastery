@@ -115,6 +115,26 @@ einem Klick **dauerhaft kaufen** (`module_grants`, `POST /api/billing/buy-module
 Add-on-Preise in `config.MODULES[*].addonPriceEur`). Effektive Module =
 Tarif + aktive Grants + Host-Overrides.
 
+**Dreistufiges Modul-Gating (alles läuft, nur nicht alles ist aufrufbar):**
+Jedes Modul hat pro Mandant genau einen von drei Zuständen — der Betreiber
+schaltet sie in `/admin` per Klick durch (`✓ frei → 🔒 gesperrt → 🚫 aus →
+Standard`):
+
+| Status | Bedeutung |
+|--------|-----------|
+| **`on`** (frei) | sichtbar **und** nutzbar |
+| **`locked`** (gesperrt) | in der Navigation **sichtbar**, aber nicht aufrufbar — die App zeigt einen Sperrbildschirm. Läuft technisch im Hintergrund mit; nach Freischaltung **sofort** und ohne Datenverlust nutzbar. **Standard** für nicht gekaufte Module. |
+| **`off`** (aus) | für den Mandanten **komplett unsichtbar** (kein Tab, kein Sperrbildschirm) |
+
+Server: `GET /api/account` liefert `tenant.moduleStates` (`{werkKey:
+'on'\|'locked'\|'off'}`), `saas.js` mappt das auf die App-Bereiche
+(`state.moduleStates`), Navigation und Render-Dispatch respektieren es
+(`isTabVisible`/`isTabUsable`/`isTabLocked`, `renderLockedModule`). Gesteuert
+über `POST /api/admin/tenants/:id/modules` mit `{module, state}` oder
+`{overrides}` (`'default'` entfernt den Override → zurück auf Tarif). So lässt
+sich jedes Modul pro Mandant mit einem Klick **sichtbar/unsichtbar** und
+**nutzbar/gesperrt** schalten.
+
 **Admin-Zentrale (`/admin`, Zugriff via `WERKOS_ADMIN_TOKEN`):** KPIs
 (Betriebe, zahlende Kunden, **MRR** inkl. Add-ons, Trials, **aktive
 Modul-Tests**, offene Angebote, Leads), Mandanten-Verwaltung (Tarif setzen,

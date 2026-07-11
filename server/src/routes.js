@@ -74,12 +74,31 @@ function effectiveModules(tenant) {
   const overrides = (dbm.getTenantSettings(tenant.id).moduleOverrides) || {};
   for (const [k, v] of Object.entries(overrides)) {
     if (!cfg.MODULES[k]) continue;
-    if (v === true) set.add(k); else if (v === false) set.delete(k);
+    // Tri-State: 'on' schaltet frei, 'off'/'locked' machen unnutzbar (locked bleibt sichtbar).
+    if (v === true || v === 'on') set.add(k);
+    else if (v === false || v === 'off' || v === 'locked') set.delete(k);
   }
   return [...set];
 }
 
 function moduleAllowed(tenant, key) { return effectiveModules(tenant).includes(key); }
+
+// Dreistufiger Sichtbarkeits-/Nutzungs-Status je Modul für den Mandanten:
+//   'on'     = freigeschaltet (sichtbar & nutzbar)
+//   'locked' = sichtbar, aber gesperrt (läuft im Hintergrund, sofort freischaltbar) — Standard
+//   'off'    = ausgeblendet (für den Mandanten unsichtbar)
+function moduleStates(tenant) {
+  const usable = new Set(effectiveModules(tenant));
+  const overrides = (dbm.getTenantSettings(tenant.id).moduleOverrides) || {};
+  const states = {};
+  for (const key of Object.keys(cfg.MODULES)) {
+    const ov = overrides[key];
+    if (ov === 'off' || ov === false) states[key] = 'off';
+    else if (usable.has(key)) states[key] = 'on';
+    else states[key] = 'locked'; // Standard: sichtbar-gesperrt (auch bei ov==='locked')
+  }
+  return states;
+}
 
 // Aufbereitete Grant-Infos für die Anzeige (Trial-Countdown, Kauf-CTA)
 function grantInfo(tenant) {
@@ -104,6 +123,7 @@ function accountInfo(tenant) {
     id: tenant.id, name: tenant.name, plan: tenant.plan,
     planLabel: plan ? plan.label : tenant.plan,
     modules: effectiveModules(tenant),
+    moduleStates: moduleStates(tenant),
     moduleCatalog: cfg.MODULES,
     grants: grantInfo(tenant),
     priceEur: plan ? plan.priceEur : null,
@@ -709,6 +729,7 @@ async function handleApi(req, res, pathname) {
         const sub = dbm.getActiveSubscription(t.id);
         return Object.assign({}, t, {
           effective_modules: effectiveModules(t),
+          module_states: moduleStates(t),
           module_overrides: dbm.getTenantSettings(t.id).moduleOverrides || {},
           grants: grantInfo(t),
           subscription: sub ? { plan: sub.plan, price_eur: sub.price_eur, source: sub.source, since: sub.created_at, billing: JSON.parse(sub.billing_json || '{}') } : null,
@@ -807,19 +828,27 @@ async function handleApi(req, res, pathname) {
       dbm.audit(grRevoke[1], 'platform-admin', 'module.grant-revoked', { module: grRevoke[2] });
       return send(res, 200, { ok: true });
     }
-    // Host schaltet Module pro Mandant frei/sperrt sie (unabhängig vom Tarif)
+    // Host schaltet Module pro Mandant frei/sperrt/blendet aus (Tri-State, unabhängig vom Tarif).
+    // Body: { overrides: { key: 'on'|'locked'|'off' } }  ODER  { module, state }.
     const modMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/modules$/);
     if (modMatch && m === 'POST') {
       const b = await readJson(req, 16e3);
       const t = dbm.getTenant(modMatch[1]);
       if (!t) return err(res, 404, 'not-found');
-      const overrides = {};
-      for (const [k, v] of Object.entries(b.overrides || {})) {
-        if (cfg.MODULES[k] && typeof v === 'boolean') overrides[k] = v;
-      }
-      dbm.setTenantModuleOverrides(t.id, overrides);
-      dbm.audit(t.id, 'platform-admin', 'modules.overridden', { overrides });
-      return send(res, 200, { ok: true, effective_modules: effectiveModules(dbm.getTenant(t.id)) });
+      const cur = Object.assign({}, dbm.getTenantSettings(t.id).moduleOverrides || {});
+      const norm = (v) => (v === true ? 'on' : v === false ? 'off' : (['on', 'locked', 'off'].includes(v) ? v : null));
+      const apply = (k, v) => {
+        if (!cfg.MODULES[k]) return;
+        const s = norm(v);
+        if (s === null || s === 'default') delete cur[k]; // 'default' entfernt Override → Standard (locked bzw. Tarif)
+        else cur[k] = s;
+      };
+      if (b.module) apply(b.module, b.state);
+      for (const [k, v] of Object.entries(b.overrides || {})) apply(k, v);
+      dbm.setTenantModuleOverrides(t.id, cur);
+      dbm.audit(t.id, 'platform-admin', 'modules.overridden', { overrides: cur });
+      const tn = dbm.getTenant(t.id);
+      return send(res, 200, { ok: true, effective_modules: effectiveModules(tn), module_states: moduleStates(tn) });
     }
     const planMatch = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/plan$/);
     if (planMatch && m === 'POST') {

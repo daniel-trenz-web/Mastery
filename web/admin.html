@@ -50,7 +50,9 @@
   .st.revoked { background: #eef1f5; color: #789; }
   .mod { display: inline-flex; align-items: center; font-size: 11px; background: #f4f7fa;
          border: 1px solid #e0e7ee; border-radius: 7px; padding: 2px 7px; margin: 1.5px; cursor: pointer; user-select: none; }
-  .mod.on { background: #dff5e7; border-color: #b5e0c5; color: #1e8449; font-weight: 700; }
+  .mod.st-on { background: #dff5e7; border-color: #b5e0c5; color: #1e8449; font-weight: 700; }
+  .mod.st-locked { background: #fdf3e3; border-color: #f0d8a8; color: #9c6a12; }
+  .mod.st-off { background: #f1f3f5; border-color: #dfe4e9; color: #9aa4ae; text-decoration: line-through; }
   .mod.override { outline: 2px dashed #f39c12; }
   .muted { color: #92a0af; font-size: 11px; }
   .err { color: #ffb3ab; font-size: 13px; margin-top: 10px; }
@@ -151,12 +153,17 @@
       var rows = (r.j.tenants || []).map(function (t) {
         var sub = t.subscription;
         var planModules = (plans[t.plan] || {}).modules || [];
+        var mstates = t.module_states || {};
+        var stIcon = { on: '✓', locked: '🔒', off: '🚫' };
+        var stName = { on: 'freigeschaltet (nutzbar)', locked: 'gesperrt (sichtbar, läuft im Hintergrund)', off: 'ausgeblendet (unsichtbar)' };
         var mods = Object.keys(catalog).map(function (k) {
-          var eff = (t.effective_modules || []).indexOf(k) >= 0;
-          var ov = t.module_overrides && typeof t.module_overrides[k] === 'boolean';
-          return '<span class="mod' + (eff ? ' on' : '') + (ov ? ' override' : '') + '" data-tid="' + esc(t.id) + '" data-mod="' + k + '" ' +
-            'title="' + esc(catalog[k].label) + (ov ? ' — Override aktiv' : (planModules.indexOf(k) >= 0 ? ' — im Tarif' : ' — nicht im Tarif')) + '">' +
-            (eff ? '✓' : '') + esc(catalog[k].label.split(' ')[0]) + '</span>';
+          var st = mstates[k] || 'locked';
+          var ovVal = t.module_overrides ? t.module_overrides[k] : undefined;
+          var ov = ovVal !== undefined && ovVal !== null;
+          var inPlan = planModules.indexOf(k) >= 0;
+          return '<span class="mod st-' + st + (ov ? ' override' : '') + '" data-tid="' + esc(t.id) + '" data-mod="' + k + '" data-st="' + st + '" ' +
+            'title="' + esc(catalog[k].label) + ' — ' + stName[st] + (ov ? ' · Host-Override' : (inPlan ? ' · im Tarif' : ' · nicht im Tarif')) + ' · Klick wechselt Status">' +
+            (stIcon[st] || '') + ' ' + esc(catalog[k].label.split(' ')[0]) + '</span>';
         }).join('');
         // Aktive Modul-Grants (Trials/Käufe) als Chips + Widerruf
         var grantChips = (t.grants || []).map(function (g) {
@@ -192,20 +199,20 @@
           '<tr id="detail-' + esc(t.id) + '" style="display:none;"><td colspan="5"><div class="detail"></div></td></tr>';
       }).join('');
       el.innerHTML = '<div class="card"><table><thead><tr><th>Betrieb</th><th>Tarif &amp; Abo</th>' +
-        '<th>Module (Klick = Override)</th><th>Nutzer</th><th>Status / Aktionen</th></tr></thead><tbody>' +
+        '<th>Module (Klick wechselt Status)</th><th>Nutzer</th><th>Status / Aktionen</th></tr></thead><tbody>' +
         (rows || '<tr><td colspan="5" class="muted">Noch keine Mandanten.</td></tr>') + '</tbody></table>' +
-        '<div class="muted" style="margin-top:8px;">Gestrichelte Module = Host-Override (unabhängig vom Tarif). Tarifwechsel hier = manuelle Freischaltung ohne Abo-Datensatz (z. B. Kulanz).</div></div>';
+        '<div class="muted" style="margin-top:8px;">Klick wechselt den Modul-Status: <b>✓ frei</b> (nutzbar) → <b>🔒 gesperrt</b> (sichtbar, läuft im Hintergrund, sofort freischaltbar) → <b>🚫 aus</b> (unsichtbar) → Standard (Tarif). Gestrichelter Rahmen = Host-Override, unabhängig vom Tarif. Alle Module laufen technisch immer mit — gesperrte sind nur nicht aufrufbar.</div></div>';
 
       el.querySelectorAll('select[data-plansel]').forEach(function (sel) {
         sel.onchange = function () { api('POST', '/api/admin/tenants/' + sel.dataset.plansel + '/plan', { plan: sel.value }).then(function () { renderTenants(); refreshKpis(); }); };
       });
       el.querySelectorAll('.mod').forEach(function (m2) {
+        // Klick zyklisiert den Host-Status: on → locked (gesperrt/sichtbar) → off (unsichtbar) → default (kein Override)
         m2.onclick = function () {
-          var t = r.j.tenants.find(function (x) { return x.id === m2.dataset.tid; });
-          var ov = Object.assign({}, t.module_overrides || {});
-          if (typeof ov[m2.dataset.mod] === 'boolean') delete ov[m2.dataset.mod];
-          else ov[m2.dataset.mod] = (t.effective_modules || []).indexOf(m2.dataset.mod) < 0;
-          api('POST', '/api/admin/tenants/' + t.id + '/modules', { overrides: ov }).then(renderTenants);
+          var next = { on: 'locked', locked: 'off', off: 'default', 'default': 'on' };
+          var cur = m2.dataset.st || 'locked';
+          var state = next[cur] || 'on';
+          api('POST', '/api/admin/tenants/' + m2.dataset.tid + '/modules', { module: m2.dataset.mod, state: state }).then(renderTenants);
         };
       });
       el.querySelectorAll('[data-trial]').forEach(function (b) {
