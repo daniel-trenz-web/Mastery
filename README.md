@@ -66,24 +66,40 @@ Brute-Force-Limit), Rollen (Mitarbeiter/Steuerberater), GoBD (unveränderliche
 Revisionen, Audit-Hash-Kette inkl. Manipulationserkennung), DSGVO (Export,
 Löschung mit Karenzfrist), Tarif-Gating, Path-Traversal, ZIP-Restore.
 
-## Module & Tarife (ein Preis pro Betrieb — niemals pro Nutzer)
+## Module & Preise (Preis = Anzahl Module × Mitarbeiter-Staffel)
 
 **5 schlanke Module**, die je einen eigenen Kaufgrund haben:
 
-| Modul | Inhalt (App-Bereiche) |
+| Modul (Server-Key) | Inhalt (App-Bereiche) |
 |---|---|
-| Zeiten & Team | Mitarbeiter, Kolonnen, Tickets, Auswertungen |
-| Aufträge & Baustelle | Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit |
-| Angebote & Rechnungen | Angebote inkl. **Kunden-Link mit Unterschrift**, Rechnungen |
-| Einsatzplanung | Kalender / Drag-&-Drop-Planung |
-| Einkauf & Lager | Lieferanten, Bestellungen, Eingangsrechnungen, Lager |
+| Einsatzplanung (`planung`) | Kalender / Drag-&-Drop-Planung |
+| Zeiten & Team (`zeiten`) | Mitarbeiter, Kolonnen, Tickets, Auswertungen |
+| Angebote & Rechnungen (`geld`) | Angebote inkl. **Kunden-Link mit Unterschrift**, Rechnungen, VOB-Abschlag, DATEV |
+| Aufträge & Baustelle (`auftraege`) | Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit |
+| Einkauf & Lager (`einkauf`) | Lieferanten, Bestellungen, Eingangsrechnungen, Lager |
 
-| Tarif | Preis/Monat | Module |
-|---|---|---|
-| Testphase | 0 € (14 Tage) | alle 5 |
-| START | 15 € | Zeiten & Team |
-| BETRIEB | 35 € | + Aufträge, + Angebote/Rechnungen |
-| BETRIEB PLUS | 59 € | alle 5 |
+**Preis richtet sich nur nach (a) Anzahl gewählter Module und (b) Mitarbeiter-Staffel** —
+kein Feature ist an die Betriebsgröße gekoppelt, auch der kleinste Betrieb kann alle fünf
+haben. Monatspreis netto pro Betrieb (`config.MODULE_PRICING`):
+
+| Umfang | bis 5 MA | bis 10 MA | bis 25 MA |
+|---|---|---|---|
+| 1 Modul | 19 € | 29 € | 49 € |
+| 2 Module | 35 € | 54 € | 90 € |
+| 3 Module | 49 € | 75 € | 125 € |
+| 4 Module | 59 € | 92 € | 155 € |
+| alle 5 (Komplett) | 69 € | 109 € | 179 € |
+
+**Self-Service-Upsell:** Klickt ein Mandant in der App auf ein gesperrtes Modul, zeigt der
+Sperrbildschirm sofort den **Mehrpreis** und den **neuen Paketpreis** (aus
+`GET /api/account` → `tenant.pricing.upsell` bzw. `POST /api/billing/module-quote`).
+Mit einem Klick (`POST /api/billing/buy-module`) wird das Modul dauerhaft freigeschaltet und
+ist sofort nutzbar. Die Mitarbeiter-Staffel leitet die App aus der Mitarbeiterzahl ab
+(`employees`), der Server speichert sie in den Tenant-Settings (`employeeCount`).
+
+> Hinweis: Die `PLANS` (START/BETRIEB/…) dienen weiterhin als Bootstrap für Registrierung/
+> Testphase und Vertriebs-Angebote; das laufende Preisbild eines Betriebs kommt aus
+> `tenant.pricing` (Modul×MA).
 
 **Kaufabschluss (Full Sales Cycle):**
 

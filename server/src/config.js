@@ -21,7 +21,47 @@ function loadOrCreateSecret() {
   return s;
 }
 
+// ---------------------------------------------------------------------------
+// Preismodell: Preis richtet sich nur nach (a) Anzahl gewählter Module und
+// (b) Mitarbeiter-Staffel. Kein Feature ist an die Betriebsgröße gekoppelt —
+// auch der kleinste Betrieb kann alle Module haben. Mehr Module = Paketpreis.
+// ---------------------------------------------------------------------------
+// Die fünf verkaufbaren Module (in Anzeige-Reihenfolge). Alles andere im
+// MODULES-Katalog (z. B. Legacy aufmass/buchhaltung/website) fließt NICHT in
+// die Modulzahl der Preisberechnung ein.
+const SELLABLE_MODULES = ['planung', 'zeiten', 'geld', 'auftraege', 'einkauf'];
+// Mitarbeiter-Staffeln (Obergrenze je Stufe). Über 25 → Enterprise (individuell).
+const EMPLOYEE_TIERS = [
+  { key: 't5', max: 5, label: 'bis 5 Mitarbeiter', short: 'bis 5' },
+  { key: 't10', max: 10, label: 'bis 10 Mitarbeiter', short: 'bis 10' },
+  { key: 't25', max: 25, label: 'bis 25 Mitarbeiter', short: 'bis 25' },
+];
+// Monatspreis netto pro Betrieb. Zeile = Anzahl Module (1..5), Spalte = Staffel.
+const MODULE_PRICING = [
+  [19, 29, 49],   // 1 Modul
+  [35, 54, 90],   // 2 Module
+  [49, 75, 125],  // 3 Module
+  [59, 92, 155],  // 4 Module
+  [69, 109, 179], // alle 5 (Komplett)
+];
+function employeeTierIndex(employees) {
+  const n = Math.max(1, Math.floor(Number(employees) || 1));
+  for (let i = 0; i < EMPLOYEE_TIERS.length; i++) if (n <= EMPLOYEE_TIERS[i].max) return i;
+  return EMPLOYEE_TIERS.length - 1; // über 25: höchste Staffel (Enterprise separat)
+}
+// Monatspreis für eine Modulzahl bei gegebener Mitarbeiterzahl.
+function modulePrice(count, employees) {
+  const c = Math.max(0, Math.min(SELLABLE_MODULES.length, Math.floor(Number(count) || 0)));
+  if (c === 0) return 0;
+  return MODULE_PRICING[c - 1][employeeTierIndex(employees)];
+}
+
 module.exports = {
+  SELLABLE_MODULES,
+  EMPLOYEE_TIERS,
+  MODULE_PRICING,
+  employeeTierIndex,
+  modulePrice,
   PORT: Number(process.env.PORT || 4000),
   HOST: process.env.HOST || '0.0.0.0',
   DATA_DIR,

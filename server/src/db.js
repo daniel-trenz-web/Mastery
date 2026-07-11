@@ -378,6 +378,13 @@ function setTenantModuleOverrides(tid, overrides) {
   s.moduleOverrides = overrides || {};
   db.prepare('UPDATE tenants SET settings_json = ? WHERE id = ?').run(JSON.stringify(s), tid);
 }
+// Generischer Settings-Setter (z. B. employeeCount für die Preis-Staffel).
+function setTenantSetting(tid, key, value) {
+  const s = getTenantSettings(tid);
+  s[key] = value;
+  db.prepare('UPDATE tenants SET settings_json = ? WHERE id = ?').run(JSON.stringify(s), tid);
+  return s;
+}
 
 // ---------------------------------------------------------------------------
 // Abonnements
@@ -703,7 +710,7 @@ module.exports = {
   upsertSite, getSite, listSites, findPublishedSite, slugTaken,
   logMail, listMailLog,
   createTenant, getTenant, setTenantPlan, setTenantStatus, listTenants,
-  getTenantSettings, setTenantModuleOverrides,
+  getTenantSettings, setTenantModuleOverrides, setTenantSetting,
   createLead, listLeads, deleteLead,
   grantModule, activeGrants, allGrants, getGrant, revokeGrant,
   createSubscription, getActiveSubscription, cancelSubscription, platformStats,
