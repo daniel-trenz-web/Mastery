@@ -101,12 +101,36 @@ ist sofort nutzbar. Die Mitarbeiter-Staffel leitet die App aus der Mitarbeiterza
 > Testphase und Vertriebs-Angebote; das laufende Preisbild eines Betriebs kommt aus
 > `tenant.pricing` (Modul×MA).
 
+**Echte Zahlung über Stripe (Karte + SEPA-Lastschrift):** Ist `WERKOS_STRIPE_SECRET`
+gesetzt, laufen Kauf und Upsell über Stripe — sonst automatisch der manuelle
+Rechnungs-Modus (unverändert). Zero-Dependency: der Client (`server/src/stripe.js`)
+spricht die Stripe-REST-API direkt an (form-encoded, Bearer), Preise werden dynamisch
+aus der Modul×MA-Matrix erzeugt (keine 15 Preise vorab anlegen).
+
+- **Erstkauf** (`POST /api/billing/checkout`): erzeugt eine **Stripe Checkout Session**
+  (`mode=subscription`, Zahlarten `card,sepa_debit`) und gibt `checkoutUrl` zurück; die
+  App leitet dorthin weiter. Freischaltung **erst nach bestätigter Zahlung**.
+- **Upsell** (`POST /api/billing/buy-module`): bestehendes Abo → Modul sofort frei +
+  Subscription-Item wird **anteilig (Proration)** auf den neuen Paketpreis gehoben;
+  Erstzahler ohne Abo → Weiterleitung zur Checkout-Seite.
+- **Webhook** (`POST /api/billing/webhook`): **HMAC-SHA256-Signaturprüfung** nach
+  Stripe-Schema (`t=…,v1=…`, Toleranzfenster). `checkout.session.completed` schaltet
+  Plan/Modul frei und speichert `stripeCustomerId`/`stripeSubscriptionId` (in den
+  Tenant-Settings, migrationsfrei); `customer.subscription.deleted` → Lesemodus;
+  `invoice.payment_failed` → Audit.
+
+Konfiguration: `WERKOS_STRIPE_SECRET`, `WERKOS_STRIPE_WEBHOOK_SECRET` (Test-Mode:
+`sk_test_…`/`whsec_…`), optional `WERKOS_STRIPE_PAYMENT_METHODS`. Der Stripe-Webhook-
+Endpoint muss auf `https://<domain>/api/billing/webhook` zeigen (Events:
+`checkout.session.completed`, `customer.subscription.deleted`, `invoice.payment_failed`).
+
 **Kaufabschluss (Full Sales Cycle):**
 
-1. **Self-Service:** Im Konto-Widget Tarif wählen → Checkout mit Rechnungsdaten
-   (Firma, Adresse, USt-ID, Zahlweise Rechnung/SEPA) + verbindlicher
-   Abo-/AVV-Zustimmung → Abo aktiv, Module sofort frei. Kündigung jederzeit
-   im Widget (Passwort-bestätigt); danach Lese-Modus + Export (kein Lock-in).
+1. **Self-Service:** Im Konto-Widget Tarif/Module wählen → Checkout mit
+   Rechnungsdaten + verbindlicher Abo-/AVV-Zustimmung. Mit Stripe: Weiterleitung
+   zur Zahlung (Karte/SEPA), Freischaltung nach bestätigter Zahlung. Ohne Stripe:
+   Kauf auf Rechnung, sofort frei. Kündigung jederzeit im Widget (Passwort-
+   bestätigt); danach Lese-Modus + Export (kein Lock-in).
 2. **Vertrieb:** In der Admin-Zentrale (`/admin`) ein **persönliches
    Abo-Angebot** erstellen (Tarif, individueller Monatspreis, persönliche
    Nachricht) → Link per WhatsApp/E-Mail an den beratenen Interessenten →

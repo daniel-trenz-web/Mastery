@@ -159,4 +159,18 @@ module.exports = {
   PSD2_SECRET_ID: process.env.WERKOS_PSD2_SECRET_ID || '',
   PSD2_SECRET_KEY: process.env.WERKOS_PSD2_SECRET_KEY || '',
   PSD2_BASE_URL: process.env.WERKOS_PSD2_BASE_URL || 'https://bankaccountdata.gocardless.com',
+
+  // ---- Stripe (echte Zahlung: Kreditkarte via Checkout + SEPA-Lastschrift)
+  // Ohne STRIPE_SECRET läuft alles im manuellen Modus (Kauf auf Rechnung).
+  // Test-Mode: sk_test_… / whsec_… genügen, Preise werden dynamisch angelegt.
+  STRIPE_SECRET: process.env.WERKOS_STRIPE_SECRET || '',
+  STRIPE_WEBHOOK_SECRET: process.env.WERKOS_STRIPE_WEBHOOK_SECRET || '',
+  STRIPE_PUBLISHABLE: process.env.WERKOS_STRIPE_PUBLISHABLE || '',
+  STRIPE_API_URL: process.env.WERKOS_STRIPE_API_URL || 'https://api.stripe.com',
+  STRIPE_CURRENCY: (process.env.WERKOS_STRIPE_CURRENCY || 'eur').toLowerCase(),
+  // Zahlarten im Checkout (Komma-getrennt). Standard: Karte + SEPA-Lastschrift.
+  STRIPE_PAYMENT_METHODS: (process.env.WERKOS_STRIPE_PAYMENT_METHODS || 'card,sepa_debit')
+    .split(',').map((s) => s.trim()).filter(Boolean),
+  // Toleranz der Webhook-Zeitstempel-Prüfung (Sekunden)
+  STRIPE_WEBHOOK_TOLERANCE_SEC: Number(process.env.WERKOS_STRIPE_WEBHOOK_TOLERANCE || 300),
 };

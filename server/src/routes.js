@@ -31,6 +31,7 @@ const ical = require('./integrations/ical');
 const weather = require('./integrations/weather');
 const psd2 = require('./integrations/psd2');
 const secure = require('./secure');
+const stripe = require('./stripe');
 const zipm = require('./zip');
 const {
   id, nowIso, hashPassword, verifyPassword, signToken, opaqueToken,
@@ -142,6 +143,61 @@ function pricingInfo(tenant) {
     maxModules: cfg.SELLABLE_MODULES.length,
     upsell,
   };
+}
+
+// Stripe-Referenzen des Mandanten (in settings_json abgelegt — migrationsfrei).
+function stripeIds(tenant) {
+  const s = dbm.getTenantSettings(tenant.id) || {};
+  return { customerId: s.stripeCustomerId || null, subscriptionId: s.stripeSubscriptionId || null };
+}
+
+// Stripe-Webhook-Events verarbeiten (nach erfolgreicher Signaturprüfung).
+// Idempotent gehalten: doppelte Zustellung schadet nicht.
+function handleStripeEvent(event) {
+  const obj = event && event.data && event.data.object;
+  if (!obj) return;
+  const tenantId = obj.metadata && obj.metadata.tenantId;
+  if (event.type === 'checkout.session.completed') {
+    if (!tenantId) return;
+    const tenant = dbm.getTenant(tenantId);
+    if (!tenant) return;
+    // Stripe-Referenzen sichern (für Upsell-Proration + spätere Events).
+    if (obj.customer) dbm.setTenantSetting(tenantId, 'stripeCustomerId', obj.customer);
+    if (obj.subscription) dbm.setTenantSetting(tenantId, 'stripeSubscriptionId', obj.subscription);
+    const pending = (dbm.getTenantSettings(tenantId) || {}).pendingCheckout || {};
+    const kind = (obj.metadata && obj.metadata.kind) || pending.kind;
+    if (kind === 'plan') {
+      const plan = (obj.metadata && obj.metadata.plan) || pending.plan;
+      if (!cfg.PLANS[plan]) return;
+      const billing = pending.billing || { company: tenant.name, payMethod: 'card' };
+      const subId = dbm.createSubscription({
+        tenantId, plan, priceEur: pending.amountEur != null ? pending.amountEur : cfg.PLANS[plan].priceEur,
+        billing, source: 'website', createdBy: 'stripe:webhook',
+      });
+      dbm.setTenantPlan(tenantId, plan);
+      dbm.setTenantStatus(tenantId, 'active', null);
+      dbm.setTenantSetting(tenantId, 'pendingCheckout', null);
+      dbm.audit(tenantId, 'stripe', 'billing.checkout-paid', { subId, plan, provider: 'stripe', stripeSubscription: obj.subscription });
+    } else if (kind === 'module') {
+      const key = (obj.metadata && obj.metadata.module) || pending.module;
+      if (!cfg.MODULES[key]) return;
+      dbm.grantModule({ tenantId, moduleKey: key, status: 'active', priceEur: pending.addEur != null ? pending.addEur : null, createdBy: 'stripe:webhook', note: 'gekauft' });
+      const after = pricingInfo(dbm.getTenant(tenantId));
+      dbm.setTenantSetting(tenantId, 'pendingCheckout', null);
+      dbm.audit(tenantId, 'stripe', 'module.purchased-paid', { module: key, newMonthlyEur: after.monthlyEur, provider: 'stripe', stripeSubscription: obj.subscription });
+    }
+  } else if (event.type === 'customer.subscription.deleted') {
+    // Abo bei Stripe beendet (Zahlungsausfall/Kündigung) → Lesemodus.
+    if (!tenantId) return;
+    const tenant = dbm.getTenant(tenantId);
+    if (!tenant) return;
+    dbm.cancelSubscription(tenantId);
+    dbm.setTenantSetting(tenantId, 'stripeSubscriptionId', null);
+    dbm.audit(tenantId, 'stripe', 'billing.subscription-ended', { provider: 'stripe', reason: obj.cancellation_details && obj.cancellation_details.reason });
+  } else if (event.type === 'invoice.payment_failed') {
+    if (!tenantId) return;
+    dbm.audit(tenantId, 'stripe', 'billing.payment-failed', { provider: 'stripe', invoice: obj.id });
+  }
 }
 
 // Aufbereitete Grant-Infos für die Anzeige (Trial-Countdown, Kauf-CTA)
@@ -391,6 +447,36 @@ async function handleApi(req, res, pathname) {
     if (billing.company.length < 2) return err(res, 400, 'invalid-company');
     if (!billing.address || !billing.zip || !billing.city) return err(res, 400, 'address-required');
     if (!isEmail(billing.email)) return err(res, 400, 'invalid-email');
+
+    // Preis nach Modul×MA-Matrix (für die Module des Tarifs); Fallback Tarifpreis.
+    const planModules = (cfg.PLANS[plan].modules || []).filter((k) => cfg.SELLABLE_MODULES.includes(k));
+    const amountEur = cfg.modulePrice(planModules.length, tenantEmployees(ctx.tenant)) || cfg.PLANS[plan].priceEur;
+
+    // Mit Stripe: echte Zahlung über gehostete Checkout-Seite (Karte + SEPA).
+    // Freischaltung erst nach bestätigter Zahlung (Webhook checkout.session.completed).
+    if (stripe.isConfigured()) {
+      try {
+        const ids = stripeIds(ctx.tenant);
+        const session = await stripe.createCheckoutSession({
+          amountEur,
+          productName: 'werkflow ' + plan + ' (' + planModules.length + ' Module)',
+          tenantId: ctx.tenant.id,
+          customerId: ids.customerId || undefined,
+          customerEmail: ids.customerId ? undefined : billing.email,
+          successUrl: baseUrl(req) + '/app?checkout=success',
+          cancelUrl: baseUrl(req) + '/app?checkout=cancel',
+          metadata: { kind: 'plan', plan: plan },
+        });
+        // Rechnungsdaten für den Webhook zwischenspeichern (nicht in Stripe-Metadata).
+        dbm.setTenantSetting(ctx.tenant.id, 'pendingCheckout', { kind: 'plan', plan, billing, sessionId: session.id, amountEur });
+        dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.checkout-started', { plan, amountEur, provider: 'stripe', sessionId: session.id });
+        return send(res, 200, { ok: true, checkoutUrl: session.url, provider: 'stripe' });
+      } catch (e) {
+        return err(res, 502, 'stripe-error', { hint: 'Zahlungsanbieter nicht erreichbar: ' + (e.message || 'unbekannt') });
+      }
+    }
+
+    // Ohne Stripe: Kauf auf Rechnung / SEPA-Mandat per E-Mail (manueller Einzug).
     const subId = dbm.createSubscription({
       tenantId: ctx.tenant.id, plan, priceEur: cfg.PLANS[plan].priceEur,
       billing, source: 'website', createdBy: ctx.user.id,
@@ -473,6 +559,55 @@ async function handleApi(req, res, pathname) {
     const sellable = cfg.SELLABLE_MODULES.includes(key);
     const up = before.upsell[key];
     const addEur = sellable && up ? up.addEur : (mod.addonPriceEur || 0);
+    const newTotalEur = sellable && up ? up.newTotalEur : (before.monthlyEur + addEur);
+
+    // Mit Stripe: echte Zahlung.
+    if (stripe.isConfigured()) {
+      const ids = stripeIds(ctx.tenant);
+      if (ids.subscriptionId) {
+        // Bestehendes Abo → Modul sofort freischalten und die Subscription
+        // anteilig (Proration) auf den neuen Paketpreis heben.
+        dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: key, status: 'active', priceEur: addEur, createdBy: ctx.user.id, note: 'gekauft' });
+        const after = pricingInfo(dbm.getTenant(ctx.tenant.id));
+        try {
+          await stripe.updateSubscriptionPrice({
+            subscriptionId: ids.subscriptionId,
+            amountEur: after.monthlyEur,
+            productName: 'werkflow — ' + after.moduleCount + ' Module (' + after.tierLabel + ')',
+          });
+        } catch (e) {
+          // Zahlungs-Update fehlgeschlagen → Freischaltung zurücknehmen, sauber melden.
+          dbm.revokeGrant(ctx.tenant.id, key);
+          return err(res, 502, 'stripe-error', { hint: 'Freischaltung abgebrochen: ' + (e.message || 'Zahlungsanbieter-Fehler') });
+        }
+        dbm.audit(ctx.tenant.id, ctx.user.id, 'module.purchased', { module: key, addEur, newMonthlyEur: after.monthlyEur, moduleCount: after.moduleCount, provider: 'stripe', proration: true, termsAccepted: true });
+        return send(res, 201, {
+          ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), addEur, newMonthlyEur: after.monthlyEur,
+          hint: mod.label + ' freigeschaltet — neuer Paketpreis ' + after.monthlyEur + ' €/Monat (anteilig über Stripe berechnet).',
+        });
+      }
+      // Noch kein Abo → einmalig über die Stripe-Checkout-Seite bezahlen;
+      // Freischaltung erst nach bestätigter Zahlung (Webhook).
+      try {
+        const session = await stripe.createCheckoutSession({
+          amountEur: newTotalEur,
+          productName: 'werkflow — ' + (before.moduleCount + 1) + ' Module (' + before.tierLabel + ')',
+          tenantId: ctx.tenant.id,
+          customerId: ids.customerId || undefined,
+          customerEmail: ids.customerId ? undefined : (ctx.user.email || undefined),
+          successUrl: baseUrl(req) + '/app?checkout=success',
+          cancelUrl: baseUrl(req) + '/app?checkout=cancel',
+          metadata: { kind: 'module', module: key },
+        });
+        dbm.setTenantSetting(ctx.tenant.id, 'pendingCheckout', { kind: 'module', module: key, sessionId: session.id, addEur, newTotalEur });
+        dbm.audit(ctx.tenant.id, ctx.user.id, 'module.checkout-started', { module: key, newMonthlyEur: newTotalEur, provider: 'stripe', sessionId: session.id });
+        return send(res, 200, { ok: true, checkoutUrl: session.url, provider: 'stripe', addEur, newMonthlyEur: newTotalEur });
+      } catch (e) {
+        return err(res, 502, 'stripe-error', { hint: 'Zahlungsanbieter nicht erreichbar: ' + (e.message || 'unbekannt') });
+      }
+    }
+
+    // Ohne Stripe: sofort freischalten, Abrechnung auf Rechnung.
     dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: key, status: 'active', priceEur: addEur, createdBy: ctx.user.id, note: 'gekauft' });
     const after = pricingInfo(dbm.getTenant(ctx.tenant.id));
     dbm.audit(ctx.tenant.id, ctx.user.id, 'module.purchased', { module: key, addEur, newMonthlyEur: after.monthlyEur, moduleCount: after.moduleCount, termsAccepted: true });
@@ -482,9 +617,23 @@ async function handleApi(req, res, pathname) {
     return send(res, 201, { ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), addEur, newMonthlyEur: after.monthlyEur, hint });
   }
 
-  // Stripe-Webhook-Andockpunkt (Signaturprüfung folgt mit echten Stripe-Keys)
+  // Stripe-Webhook: bestätigt Zahlungen und schaltet frei. Signaturgeprüft.
   if (pathname === '/api/billing/webhook' && m === 'POST') {
-    await readBody(req, 1e6);
+    const raw = await readBody(req, 1e6);
+    // Ohne konfiguriertes Webhook-Secret bleibt es ein No-Op-Andockpunkt.
+    if (!cfg.STRIPE_WEBHOOK_SECRET) return send(res, 200, { received: true, ignored: 'no-webhook-secret' });
+    let event;
+    try {
+      event = stripe.verifyWebhook(raw, req.headers['stripe-signature']);
+    } catch (e) {
+      return err(res, 400, 'invalid-signature', { hint: e.message });
+    }
+    try {
+      handleStripeEvent(event);
+    } catch (e) {
+      // Verarbeitungsfehler protokollieren, aber 200 geben (Stripe re-queued sonst endlos).
+      try { dbm.audit('platform', 'stripe', 'webhook.error', { type: event && event.type, error: String(e && e.message) }); } catch (_e) {}
+    }
     return send(res, 200, { received: true });
   }
 
