@@ -1201,6 +1201,10 @@
     background: #c0392b; color: white; font-size: 10px;
     padding: 1px 7px; border-radius: 10px; font-weight: 700;
   }
+  /* Gesperrtes Modul: sichtbar, aber gedämpft + Schloss */
+  .sidenav-item.locked { opacity: 0.55; }
+  .sidenav-item.locked .label { font-weight: 500; }
+  .sidenav-item .lock { font-size: 11px; opacity: 0.9; flex-shrink: 0; }
   .sidenav-footer {
     margin-top: auto; padding: 12px 16px;
     font-size: 10px; color: rgba(255,255,255,0.42);
@@ -8660,6 +8664,58 @@
   window.isModuleEnabled = isModuleEnabled;
   window.isTabEnabled = isTabEnabled;
 
+  // --- Dreistufiger Modul-Status: 'on' (nutzbar) · 'locked' (sichtbar, gesperrt) · 'off' (unsichtbar)
+  // Standard ist 'on', solange der Host nichts anderes setzt (Einzelplatz-Betrieb ohne SaaS).
+  function moduleStateOf(moduleKey) {
+    var ms = state.moduleStates;
+    if (ms && typeof ms[moduleKey] === 'string') return ms[moduleKey];
+    return isModuleEnabled(moduleKey) ? 'on' : 'locked';
+  }
+  function tabModuleKey(tabKey) {
+    const ALWAYS_ON = new Set(['dashboard', 'projects', 'kunden', 'we', 'hv', 'archiv', 'archive', 'order-archive', 'settings', 'my-projects', 'vacation']);
+    if (ALWAYS_ON.has(tabKey)) return null; // immer sichtbar & nutzbar
+    const m = MODULE_CONFIG.find(x => x.tabs && x.tabs.includes(tabKey));
+    return m ? m.key : null;
+  }
+  // Sichtbar in der Navigation? (locked ja, off nein, unbekannt/zentral ja)
+  function isTabVisible(tabKey) {
+    const mk = tabModuleKey(tabKey);
+    if (!mk) return true;
+    return moduleStateOf(mk) !== 'off';
+  }
+  // Nutzbar? (nur 'on')
+  function isTabUsable(tabKey) {
+    const mk = tabModuleKey(tabKey);
+    if (!mk) return true;
+    return moduleStateOf(mk) === 'on';
+  }
+  // Gesperrt = sichtbar, aber nicht nutzbar
+  function isTabLocked(tabKey) { return isTabVisible(tabKey) && !isTabUsable(tabKey); }
+  window.moduleStateOf = moduleStateOf;
+  window.isTabVisible = isTabVisible;
+  window.isTabUsable = isTabUsable;
+  window.isTabLocked = isTabLocked;
+
+  // Sperrbildschirm: Modul läuft, ist aber (noch) nicht freigeschaltet.
+  window.renderLockedModule = function (tabKey) {
+    const main = document.getElementById('mainContent'); if (!main) return;
+    const mk = tabModuleKey(tabKey);
+    const m = MODULE_CONFIG.find(x => x.key === mk) || {};
+    const guest = (typeof isGuest === 'function' && isGuest());
+    main.innerHTML =
+      '<div style="max-width:620px;margin:8vh auto 0;text-align:center;padding:28px;border:1px solid var(--color-border,#e3e9ef);border-radius:14px;background:var(--color-surface,#fff);">' +
+      '<div style="font-size:46px;line-height:1;">🔒</div>' +
+      '<h2 style="margin:12px 0 4px;">' + (m.icon || '🧩') + ' ' + escapeHtml(m.label || 'Modul') + ' ist gesperrt</h2>' +
+      '<p style="color:#667;font-size:14px;">' + escapeHtml(m.desc || 'Dieses Modul ist in deinem Paket noch nicht freigeschaltet.') + '</p>' +
+      '<p style="color:#889;font-size:13px;margin-top:10px;">Es läuft bereits im Hintergrund — nach der Freischaltung kannst du es <b>sofort</b> nutzen, ohne Datenverlust.</p>' +
+      (guest ? '' :
+        '<p style="color:#889;font-size:12.5px;margin-top:14px;">Freischaltung über deinen werkflow-Ansprechpartner. Eine Übersicht aller Module findest du in den Einstellungen.</p>' +
+        '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+        '<button class="secondary" onclick="switchTab(\'settings\')">🔧 Funktionsumfang ansehen</button>' +
+        '<button class="secondary" onclick="switchTab(\'dashboard\')">← Zur Übersicht</button></div>') +
+      '</div>';
+  };
+
   // Bewusst schlanke Navigation — nur die Kernfunktionen für den Betriebsalltag.
   const NAV_GROUPS = [
     { label: 'Start', items: [
@@ -8750,8 +8806,8 @@
       NAV_GROUPS.forEach(group => {
         const visibleItems = group.items.filter(it => {
           if (single && (it.tab === 'employees' || it.tab === 'kolonnen')) return false;
-          // V6.3 — Modul-Filter: deaktivierte Module ausblenden
-          if (typeof isTabEnabled === 'function' && !isTabEnabled(it.tab)) return false;
+          // V13 — Modul-Sichtbarkeit: nur 'off' ausblenden; 'locked' bleibt sichtbar (mit Schloss)
+          if (typeof isTabVisible === 'function' && !isTabVisible(it.tab)) return false;
           // V10.1 — Read-Only-Admin (mode='guest') hat KEINE Einstellungen-Sicht
           if (mode === 'guest' && it.tab === 'settings') return false;
           // V3.2 — Permission-Filter
@@ -8779,10 +8835,11 @@
         visibleItems.forEach(it => {
           const active = (currentTab === it.tab) || (it.tab === 'kunden' && (currentTab === 'we' || currentTab === 'hv')) || (it.tab === 'archiv' && (currentTab === 'archive' || currentTab === 'order-archive')) || (it.tab === 'kolonnen' && currentTab === 'teams');
           const badgeCount = _navBadgeFor(it.tab);
-          html += `<button class="sidenav-item ${active?'active':''}" onclick="switchTab('${it.tab}')">
+          const locked = (typeof isTabLocked === 'function') && isTabLocked(it.tab);
+          html += `<button class="sidenav-item ${active?'active':''} ${locked?'locked':''}" onclick="switchTab('${it.tab}')" title="${locked?'Gesperrt — im Paket noch nicht freigeschaltet':''}">
             <span class="icon">${it.icon}</span>
             <span class="label">${escapeHtml(it.label)}</span>
-            ${badgeCount ? '<span class="badge">'+badgeCount+'</span>' : ''}
+            ${locked ? '<span class="lock">🔒</span>' : (badgeCount ? '<span class="badge">'+badgeCount+'</span>' : '')}
           </button>`;
         });
         html += '</div>';
@@ -8857,15 +8914,16 @@
         const visible = group.items.filter(it => {
           // V7.46: Permission-Filter (statt hardcoded)
           if (typeof it.perm === 'function' && !it.perm()) return false;
-          // V6.3 — Modul-Filter: deaktivierte Module ausblenden
-          if (typeof isTabEnabled === 'function' && !isTabEnabled(it.tab)) return false;
+          // V13 — Modul-Sichtbarkeit: nur 'off' ausblenden; 'locked' bleibt sichtbar (mit Schloss)
+          if (typeof isTabVisible === 'function' && !isTabVisible(it.tab)) return false;
           return true;
         });
         if (visible.length === 0) return;
         html += '<div class="sidenav-section"><div class="label">' + escapeHtml(group.label) + '</div>';
         visible.forEach(it => {
           const active = (currentTab === it.tab) || (it.tab === 'my-projects' && currentTab === 'projects');
-          html += `<button class="sidenav-item ${active?'active':''}" onclick="switchTab('${it.tab}')"><span class="icon">${it.icon}</span><span class="label">${escapeHtml(it.label)}</span></button>`;
+          const locked = (typeof isTabLocked === 'function') && isTabLocked(it.tab);
+          html += `<button class="sidenav-item ${active?'active':''} ${locked?'locked':''}" onclick="switchTab('${it.tab}')" title="${locked?'Gesperrt — im Paket noch nicht freigeschaltet':''}"><span class="icon">${it.icon}</span><span class="label">${escapeHtml(it.label)}</span>${locked?'<span class="lock">🔒</span>':''}</button>`;
         });
         html += '</div>';
       });
@@ -9041,12 +9099,16 @@
       return;
     }
     if (mode === 'admin' || mode === 'guest') {
-      // V6.3: Wenn Tab durch deaktiviertes Modul gesperrt → Dashboard zeigen
-      if (typeof isTabEnabled === 'function' && !isTabEnabled(currentTab)) {
-        const m = MODULE_CONFIG.find(x => x.tabs && x.tabs.includes(currentTab));
+      // V13: Dreistufiges Modul-Gating.
+      // 'off'    → Tab existiert nicht in der Nav → zurück aufs Dashboard.
+      // 'locked' → Tab ist sichtbar, aber nicht freigeschaltet → Sperrbildschirm (Daten laufen im Hintergrund).
+      if (typeof isTabVisible === 'function' && !isTabVisible(currentTab)) {
         currentTab = 'dashboard';
         renderDashboard();
-        if (m) setTimeout(() => alert('ℹ️ Modul „' + m.label + '" ist deaktiviert.\n\nUnter ⚙ Einstellungen → 🔧 Funktionsumfang kannst du es wieder aktivieren.'), 100);
+        return;
+      }
+      if (typeof isTabLocked === 'function' && isTabLocked(currentTab)) {
+        window.renderLockedModule(currentTab);
         return;
       }
       if (currentTab === 'dashboard') renderDashboard();
@@ -9137,6 +9199,14 @@
       if (!permOK) {
         currentTab = 'calendar';
         return renderCalendarView();
+      }
+      // V13 — Modul-Gating auch für Mitarbeiter: 'off' → Kalender, 'locked' → Sperrbildschirm
+      if (typeof isTabVisible === 'function' && !isTabVisible(currentTab)) {
+        currentTab = 'calendar';
+        return renderCalendarView();
+      }
+      if (typeof isTabLocked === 'function' && isTabLocked(currentTab)) {
+        return window.renderLockedModule(currentTab);
       }
       // Dispatch wie Admin (V7.47)
       if (currentTab === 'calendar') return renderCalendarView();
@@ -16715,7 +16785,21 @@
         <p style="font-size:12px; color:#666; margin-bottom:8px;">Schalte einzelne Funktionsbereiche aus, wenn du sie nicht brauchst. Die zugehörigen Tabs werden ausgeblendet, deine Daten bleiben erhalten und kommen beim Wieder-Einschalten zurück.</p>
         <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:8px; margin-top:10px;">
           ${MODULE_CONFIG.map(m => {
-            const enabled = isModuleEnabled(m.key);
+            const hostState = (typeof moduleStateOf === 'function') ? moduleStateOf(m.key) : 'on';
+            // Host hat das Modul ganz ausgeblendet ('off') → hier gar nicht anzeigen.
+            if (hostState === 'off') return '';
+            const locked = hostState === 'locked';
+            const enabled = !locked && isModuleEnabled(m.key);
+            if (locked) {
+              return `<label class="module-toggle" style="display:flex; align-items:flex-start; gap:8px; background:#f7f8fa; padding:10px 12px; border-radius:6px; border:1px dashed #cbd2db; cursor:default; opacity:0.75;" title="Im Paket noch nicht freigeschaltet">
+                <span style="margin-top:1px; font-size:15px;">🔒</span>
+                <div style="flex:1;">
+                  <div style="font-weight:600; font-size:13px;">${m.icon} ${escapeHtml(m.label)}</div>
+                  <div style="font-size:11px; color:#666; margin-top:2px;">${escapeHtml(m.desc)}</div>
+                  <div style="font-size:11px; color:#b26a00; margin-top:4px;">Gesperrt — im Paket freischaltbar. Läuft bereits im Hintergrund.</div>
+                </div>
+              </label>`;
+            }
             return `<label class="module-toggle" style="display:flex; align-items:flex-start; gap:8px; background:white; padding:10px 12px; border-radius:6px; border:1px solid #e0e3e8; cursor:pointer; ${enabled ? '' : 'opacity:0.55;'}" title="${escapeHtml(m.desc)}">
               <input type="checkbox" data-module="${m.key}" ${enabled ? 'checked' : ''} onchange="toggleModule('${m.key}', this.checked)" style="margin-top:3px;">
               <div style="flex:1;">

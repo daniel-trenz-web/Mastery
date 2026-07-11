@@ -73,11 +73,15 @@
     var s = getSession();
     if (!s || !window.state || !s.tenant || !s.tenant.moduleCatalog) return;
     var allowed = s.tenant.modules || [];
+    var states = s.tenant.moduleStates || {};       // {werkKey: 'on'|'locked'|'off'}
     var mods = window.state.modules || (window.state.modules = {});
+    var vis = window.state.moduleStates || (window.state.moduleStates = {}); // appKey -> Tri-State
     Object.keys(s.tenant.moduleCatalog).forEach(function (wk) {
-      var on = allowed.indexOf(wk) >= 0;
+      var st = states[wk] || (allowed.indexOf(wk) >= 0 ? 'on' : 'locked');
+      var on = st === 'on';
       (s.tenant.moduleCatalog[wk].appModules || []).forEach(function (appKey) {
-        mods[appKey] = on;
+        mods[appKey] = on;          // nutzbar?
+        vis[appKey] = st;           // sichtbar/gesperrt/aus
       });
     });
   }
