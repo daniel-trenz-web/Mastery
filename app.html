@@ -8698,23 +8698,78 @@
   window.isTabLocked = isTabLocked;
 
   // Sperrbildschirm: Modul läuft, ist aber (noch) nicht freigeschaltet.
+  // Zeigt bei SaaS-Betrieb sofort den Mehrpreis + neuen Paketpreis und bietet
+  // dem Inhaber die Self-Service-Freischaltung mit einem Klick an.
   window.renderLockedModule = function (tabKey) {
     const main = document.getElementById('mainContent'); if (!main) return;
     const mk = tabModuleKey(tabKey);
     const m = MODULE_CONFIG.find(x => x.key === mk) || {};
     const guest = (typeof isGuest === 'function' && isGuest());
+    const saas = !!(window.WERKOS && WERKOS.session && WERKOS.session());
+    const isOwner = (typeof mode !== 'undefined' && mode === 'admin');
+    // Welches verkaufbare Modul steckt hinter diesem App-Bereich?
+    const werk = (state.moduleWerk && state.moduleWerk[mk]) || null;
+    const pr = (window.WERKOS && WERKOS.pricing && WERKOS.pricing()) || state.pricing || null;
+    const up = (pr && pr.upsell && werk && pr.upsell[werk]) || null;
+
+    let cta = '';
+    if (!guest && saas && isOwner && werk) {
+      // Preis direkt aus dem Konto-Preisbild (sofort, ohne Rückfrage). Fällt es,
+      // holt der Button den Preis beim Klick per Quote nach.
+      const priceLine = up
+        ? '<div style="margin:14px auto 0;max-width:360px;background:var(--color-primary-soft,#eef4fb);border:1px solid #dae6f2;border-radius:10px;padding:12px 14px;">' +
+          '<div style="font-size:13px;color:#556;">Mehrpreis für dieses Modul</div>' +
+          '<div style="font-size:26px;font-weight:800;color:#1f6feb;">+' + up.addEur + ' €<span style="font-size:13px;font-weight:600;color:#889;"> / Monat</span></div>' +
+          '<div style="font-size:12.5px;color:#667;margin-top:4px;">Neuer Paketpreis: <b>' + up.newTotalEur + ' €/Monat</b> · ' + (pr.tierLabel || '') + '</div>' +
+          '</div>'
+        : '';
+      cta = priceLine +
+        '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+        '<button class="success" id="lockUpsellBtn" onclick="upsellModule(\'' + werk + '\',\'' + (m.label || 'Modul').replace(/'/g, '') + '\')">🔓 Jetzt freischalten' + (up ? ' — +' + up.addEur + ' €/Monat' : '') + '</button>' +
+        '<button class="secondary" onclick="switchTab(\'dashboard\')">← Zur Übersicht</button></div>' +
+        '<p style="color:#99a,font-size:11.5px;margin-top:10px;">Kostenpflichtig, auf Rechnung. Monatlich kündbar. Alle Preise zzgl. USt.</p>';
+    } else if (!guest) {
+      cta = '<p style="color:#889;font-size:12.5px;margin-top:14px;">Freischaltung über deinen werkflow-Ansprechpartner.' +
+        (isOwner ? ' Eine Übersicht aller Module findest du in den Einstellungen.' : '') + '</p>' +
+        '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+        (isOwner ? '<button class="secondary" onclick="switchTab(\'settings\')">🔧 Funktionsumfang ansehen</button>' : '') +
+        '<button class="secondary" onclick="switchTab(\'dashboard\')">← Zur Übersicht</button></div>';
+    }
+
     main.innerHTML =
-      '<div style="max-width:620px;margin:8vh auto 0;text-align:center;padding:28px;border:1px solid var(--color-border,#e3e9ef);border-radius:14px;background:var(--color-surface,#fff);">' +
+      '<div style="max-width:640px;margin:8vh auto 0;text-align:center;padding:28px;border:1px solid var(--color-border,#e3e9ef);border-radius:14px;background:var(--color-surface,#fff);">' +
       '<div style="font-size:46px;line-height:1;">🔒</div>' +
       '<h2 style="margin:12px 0 4px;">' + (m.icon || '🧩') + ' ' + escapeHtml(m.label || 'Modul') + ' ist gesperrt</h2>' +
       '<p style="color:#667;font-size:14px;">' + escapeHtml(m.desc || 'Dieses Modul ist in deinem Paket noch nicht freigeschaltet.') + '</p>' +
       '<p style="color:#889;font-size:13px;margin-top:10px;">Es läuft bereits im Hintergrund — nach der Freischaltung kannst du es <b>sofort</b> nutzen, ohne Datenverlust.</p>' +
-      (guest ? '' :
-        '<p style="color:#889;font-size:12.5px;margin-top:14px;">Freischaltung über deinen werkflow-Ansprechpartner. Eine Übersicht aller Module findest du in den Einstellungen.</p>' +
-        '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
-        '<button class="secondary" onclick="switchTab(\'settings\')">🔧 Funktionsumfang ansehen</button>' +
-        '<button class="secondary" onclick="switchTab(\'dashboard\')">← Zur Übersicht</button></div>') +
+      cta +
       '</div>';
+  };
+
+  // Self-Service-Upsell: bestätigt Mehrpreis + neuen Paketpreis und schaltet frei.
+  window.upsellModule = function (werkKey, label) {
+    if (!(window.WERKOS && WERKOS.buyModule)) { alert('Freischaltung derzeit nicht möglich.'); return; }
+    const btn = document.getElementById('lockUpsellBtn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Preis wird geprüft …'; }
+    WERKOS.moduleQuote(werkKey).then(function (q) {
+      const add = q ? q.addEur : null, total = q ? q.newMonthlyEur : null, tier = q ? q.tierLabel : '';
+      const msg = q
+        ? '„' + label + '" jetzt dauerhaft freischalten?\n\n'
+          + '• Mehrpreis: +' + add + ' €/Monat\n'
+          + '• Neuer Paketpreis: ' + total + ' €/Monat (' + tier + ')\n\n'
+          + 'Kostenpflichtig, auf Rechnung. Monatlich kündbar, zzgl. USt.'
+        : '„' + label + '" jetzt dauerhaft freischalten? Kostenpflichtig, auf Rechnung.';
+      if (!confirm(msg)) { if (btn) { btn.disabled = false; window.render && window.render(); } return; }
+      WERKOS.buyModule(werkKey).then(function (r) {
+        if (r && r.ok) {
+          if (typeof toast === 'function') toast('✓ ' + (r.hint || (label + ' freigeschaltet.')));
+          else alert('✓ ' + (r.hint || (label + ' freigeschaltet.')));
+          if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
+        } else {
+          alert('Freischaltung fehlgeschlagen: ' + ((r && r.error) || 'unbekannt'));
+          if (btn) { btn.disabled = false; window.render && window.render(); }
+        }
+      });
+    });
   };
 
   // Bewusst schlanke Navigation — nur die Kernfunktionen für den Betriebsalltag.
@@ -16792,12 +16847,22 @@
             const locked = hostState === 'locked';
             const enabled = !locked && isModuleEnabled(m.key);
             if (locked) {
-              return `<label class="module-toggle" style="display:flex; align-items:flex-start; gap:8px; background:#f7f8fa; padding:10px 12px; border-radius:6px; border:1px dashed #cbd2db; cursor:default; opacity:0.75;" title="Im Paket noch nicht freigeschaltet">
+              const werkKey = (state.moduleWerk && state.moduleWerk[m.key]) || null;
+              const prc = (window.WERKOS && WERKOS.pricing && WERKOS.pricing()) || state.pricing || null;
+              const ups = (prc && prc.upsell && werkKey && prc.upsell[werkKey]) || null;
+              const owner = (typeof mode !== 'undefined' && mode === 'admin');
+              const saasSess = !!(window.WERKOS && WERKOS.session && WERKOS.session());
+              const priceTxt = ups ? `+${ups.addEur} €/Monat · neuer Paketpreis ${ups.newTotalEur} €/Monat` : 'im Paket freischaltbar';
+              const buyBtn = (owner && saasSess && werkKey)
+                ? `<button class="success small" style="margin-top:6px;" onclick="upsellModule('${werkKey}','${escapeHtml(m.label).replace(/'/g,'')}')">🔓 Freischalten${ups ? ' (+'+ups.addEur+' €)' : ''}</button>`
+                : '';
+              return `<label class="module-toggle" style="display:flex; align-items:flex-start; gap:8px; background:#f7f8fa; padding:10px 12px; border-radius:6px; border:1px dashed #cbd2db; cursor:default;" title="Im Paket noch nicht freigeschaltet">
                 <span style="margin-top:1px; font-size:15px;">🔒</span>
                 <div style="flex:1;">
                   <div style="font-weight:600; font-size:13px;">${m.icon} ${escapeHtml(m.label)}</div>
                   <div style="font-size:11px; color:#666; margin-top:2px;">${escapeHtml(m.desc)}</div>
-                  <div style="font-size:11px; color:#b26a00; margin-top:4px;">Gesperrt — im Paket freischaltbar. Läuft bereits im Hintergrund.</div>
+                  <div style="font-size:11px; color:#b26a00; margin-top:4px;">Gesperrt — ${priceTxt}. Läuft bereits im Hintergrund.</div>
+                  ${buyBtn}
                 </div>
               </label>`;
             }
