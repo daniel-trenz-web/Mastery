@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Preise — werkflow | Module wählen, Preis nach Mitarbeiterzahl, ab 19 €/Monat</title>
-<meta name="description" content="werkflow Preise: Module frei wählen, Preis nur nach Mitarbeiterzahl (bis 5 / 10 / 25). 1 Modul ab 19 €, Komplett-Paket ab 69 €/Monat. Auch der kleinste Betrieb kann alle Funktionen haben. 14 Tage kostenlos testen, monatlich kündbar.">
+<title>Preise — werkflow | Module wählen, Preis nach Mitarbeiterzahl, ab 14 €/Monat</title>
+<meta name="description" content="werkflow Preise: Module frei wählen, Preis nur nach Mitarbeiterzahl (bis 5 / 10 / 25). Einzelmodule ab 14 €, Komplett-Paket ab 69 €/Monat. Auch der kleinste Betrieb kann alle Funktionen haben. 14 Tage kostenlos testen, monatlich kündbar.">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <meta name="theme-color" content="#12293f">
 <link rel="stylesheet" href="site.css">
@@ -19,8 +19,19 @@
   .modpick label:hover { border-color:#9cc2e6; }
   .modpick input:checked + .mtext { }
   .modpick label.on { border-color:#1e8449; background:rgba(30,132,73,.06); }
+  .modpick .mtext { flex:1; }
   .modpick .mtext b { display:block; font-size:14.5px; }
   .modpick .mtext span { font-size:12px; color:var(--soft,#667); }
+  .modpick .mprice { font-weight:800; font-size:14px; color:#16324e; white-space:nowrap; align-self:center; }
+  .calc-list { margin-top:6px; font-size:13px; color:var(--soft,#667); }
+  .calc-list s { color:#98a5b3; }
+  .calc-badge { display:inline-block; background:#eafaf1; color:#1e8449; font-weight:800; font-size:12px; padding:2px 8px; border-radius:999px; margin-left:4px; }
+  .calc-save { margin-top:6px; font-size:12.5px; color:#1e8449; font-weight:700; min-height:16px; }
+  .disc-row { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }
+  @media (max-width:560px){ .disc-row{ grid-template-columns:repeat(2,1fr); } }
+  .disc { background:var(--card,#fff); border:1px solid var(--line,#e3e9ef); border-radius:12px; padding:12px; text-align:center; }
+  .disc b { display:block; font-size:13px; color:var(--ink,#16222f); }
+  .disc span { display:block; font-size:20px; font-weight:800; color:#1e8449; margin-top:2px; }
   .staffel { display:flex; gap:8px; margin:6px 0 0; flex-wrap:wrap; }
   .staffel button { flex:1; min-width:92px; padding:10px 8px; border:1px solid var(--line,#e3e9ef); border-radius:10px; background:#fff; cursor:pointer; font-weight:600; font-size:13px; color:var(--ink,#12293f); }
   .staffel button.on { border-color:#16324e; background:#16324e; color:#fff; }
@@ -84,13 +95,13 @@
     </div>
     <div class="calc">
       <div class="calc-card">
-        <div style="font-weight:700; margin-bottom:8px;">1 · Module wählen</div>
+        <div style="font-weight:700; margin-bottom:8px;">1 · Module wählen — jedes hat seinen eigenen Preis</div>
         <ul class="modpick" id="modpick">
-          <li><label class="on"><input type="checkbox" value="planung" checked><span class="mtext"><b>📅 Planung</b><span>Terminplan &amp; Mitarbeitereinteilung</span></span></label></li>
-          <li><label class="on"><input type="checkbox" value="zeiten" checked><span class="mtext"><b>⏱ Zeit &amp; Team</b><span>Stundenerfassung, Mitarbeiter, Stundensätze</span></span></label></li>
-          <li><label class="on"><input type="checkbox" value="geld" checked><span class="mtext"><b>🧾 Angebote &amp; Rechnungen</b><span>Angebote, Kalkulation, Rechnungen, VOB-Abschlag, Mahnwesen, DATEV</span></span></label></li>
-          <li><label><input type="checkbox" value="auftraege"><span class="mtext"><b>📋 Aufträge &amp; Baustelle</b><span>Aufträge, Bautagebuch/Berichte, Mängel, LVs, Cockpit</span></span></label></li>
-          <li><label><input type="checkbox" value="einkauf"><span class="mtext"><b>🛒 Material &amp; Lager</b><span>Materialwesen, Lager, Bestellung, Inventur, Wareneingang per Foto</span></span></label></li>
+          <li><label class="on"><input type="checkbox" value="planung" checked><span class="mtext"><b>📅 Planung</b><span>Terminplan &amp; Mitarbeitereinteilung</span></span><span class="mprice" data-k="planung">14&nbsp;€</span></label></li>
+          <li><label class="on"><input type="checkbox" value="einkauf" checked><span class="mtext"><b>🛒 Material &amp; Lager</b><span>Materialwesen, Lager, Bestellung, Inventur</span></span><span class="mprice" data-k="einkauf">18&nbsp;€</span></label></li>
+          <li><label class="on"><input type="checkbox" value="zeiten" checked><span class="mtext"><b>⏱ Zeit &amp; Team</b><span>Stundenerfassung, Mitarbeiter, Stundensätze</span></span><span class="mprice" data-k="zeiten">20&nbsp;€</span></label></li>
+          <li><label><input type="checkbox" value="auftraege"><span class="mtext"><b>📋 Aufträge &amp; Baustelle</b><span>Aufträge, Bautagebuch, Mängel, LVs, Cockpit</span></span><span class="mprice" data-k="auftraege">23&nbsp;€</span></label></li>
+          <li><label><input type="checkbox" value="geld"><span class="mtext"><b>🧾 Angebote &amp; Rechnungen</b><span>Angebote, Rechnungen, VOB-Abschlag, Mahnwesen, DATEV</span></span><span class="mprice" data-k="geld">28&nbsp;€</span></label></li>
         </ul>
         <div style="font-weight:700; margin:18px 0 8px;">2 · Betriebsgröße</div>
         <div class="staffel" id="staffel">
@@ -102,36 +113,45 @@
       </div>
       <div class="calc-card calc-out">
         <div class="calc-sub" id="calcCount">3 von 5 Modulen · bis 5 Mitarbeiter</div>
+        <div class="calc-list"><span id="calcListLbl">Einzelpreise</span> <s id="calcList">52 €</s> <span class="calc-badge" id="calcBadge">−18 %</span></div>
         <div class="calc-price"><span id="calcPrice">49</span> €<small> / Monat</small></div>
+        <div class="calc-save" id="calcSave">Du sparst 3 € / Monat mit dem Paket</div>
         <div class="calc-year" id="calcYear">490 € / Jahr (2 Monate geschenkt)</div>
-        <a class="btn primary big" href="/#demo" style="margin-top:16px;">🚀 14 Tage kostenlos testen</a>
-        <p style="font-size:11.5px; color:var(--soft,#667); margin-top:10px;">Netto pro Betrieb · unbegrenzte Nutzer im Rahmen der Staffel · immer inklusive: Hosting in Deutschland, GoBD-Archiv, DSGVO-Export, tägliche Backups.</p>
+        <a class="btn primary big" href="/app?action=buy" id="calcBuy" style="margin-top:16px;">🛒 Direkt kaufen</a>
+        <a class="btn navy" href="/app?action=buy" style="margin-top:8px;">🚀 Erst 14 Tage kostenlos testen</a>
+        <p style="font-size:11.5px; color:var(--soft,#667); margin-top:10px;">Netto pro Betrieb · unbegrenzte Nutzer im Rahmen der Staffel · Zahlung per Karte oder SEPA · monatlich kündbar. Immer inklusive: Hosting in Deutschland, GoBD-Archiv, DSGVO-Export, tägliche Backups.</p>
       </div>
     </div>
 
-    <div class="sec-head" style="margin-top:40px;">
+    <div class="sec-head" style="margin-top:44px;">
       <span class="tag">À la carte</span>
-      <h2>Die komplette Preismatrix</h2>
-      <p>Monatspreis netto pro Betrieb. Zeile = Anzahl Module, Spalte = Mitarbeiter-Staffel. Welche Module — frei wählbar.</p>
+      <h2>Einzelpreise &amp; Mengenrabatt</h2>
+      <p>Jedes Modul hat seinen eigenen Monatspreis (netto pro Betrieb). Wählst du mehrere, sinkt der Gesamtpreis um einen wachsenden Prozentsatz.</p>
     </div>
     <div class="cmp-wrap">
       <table class="matrix">
-        <thead><tr><th>Umfang</th><th>bis 5 MA</th><th>bis 10 MA</th><th>bis 25 MA</th></tr></thead>
+        <thead><tr><th>Modul</th><th>bis 5 MA</th><th>bis 10 MA</th><th>bis 25 MA</th></tr></thead>
         <tbody>
-          <tr><td>1 Modul</td><td><span class="eu">19</span></td><td><span class="eu">29</span></td><td><span class="eu">49</span></td></tr>
-          <tr><td>2 Module</td><td><span class="eu">35</span></td><td><span class="eu">54</span></td><td><span class="eu">90</span></td></tr>
-          <tr><td>3 Module</td><td><span class="eu">49</span></td><td><span class="eu">75</span></td><td><span class="eu">125</span></td></tr>
-          <tr><td>4 Module</td><td><span class="eu">59</span></td><td><span class="eu">92</span></td><td><span class="eu">155</span></td></tr>
-          <tr class="total"><td>Alle 5 Module (Komplett)</td><td><span class="eu">69</span></td><td><span class="eu">109</span></td><td><span class="eu">179</span></td></tr>
+          <tr><td>📅 Planung</td><td><span class="eu">14</span></td><td><span class="eu">22</span></td><td><span class="eu">36</span></td></tr>
+          <tr><td>🛒 Material &amp; Lager</td><td><span class="eu">18</span></td><td><span class="eu">28</span></td><td><span class="eu">47</span></td></tr>
+          <tr><td>⏱ Zeit &amp; Team</td><td><span class="eu">20</span></td><td><span class="eu">32</span></td><td><span class="eu">52</span></td></tr>
+          <tr><td>📋 Aufträge &amp; Baustelle</td><td><span class="eu">23</span></td><td><span class="eu">36</span></td><td><span class="eu">60</span></td></tr>
+          <tr><td>🧾 Angebote &amp; Rechnungen</td><td><span class="eu">28</span></td><td><span class="eu">44</span></td><td><span class="eu">73</span></td></tr>
+          <tr class="total"><td>Alle 5 zusammen (−33 %)</td><td><span class="eu">69</span></td><td><span class="eu">109</span></td><td><span class="eu">180</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p class="pricenote" style="margin-top:16px;">Jeder Start beginnt mit <b>14 Tagen Testphase mit allen Modulen</b> — ohne Zahlungsdaten,
-      endet automatisch und wird nie ungefragt kostenpflichtig.</p>
-    <p class="pricenote" style="margin-top:8px;"><b>Jederzeit erweiterbar:</b> Ein Modul lässt sich mit einem Klick dazubuchen — der Preis springt
-      dann auf die nächste Paketstufe. Direkt in der App siehst du beim Klick auf ein gesperrtes Modul sofort
-      den Mehrpreis und den neuen Paketpreis. Alle Module laufen im Hintergrund immer mit; nach der Freischaltung
-      sind sie <b>sofort</b> nutzbar, ohne Datenverlust.</p>
+    <div class="disc-row">
+      <div class="disc"><b>2 Module</b><span>−10 %</span></div>
+      <div class="disc"><b>3 Module</b><span>−18 %</span></div>
+      <div class="disc"><b>4 Module</b><span>−25 %</span></div>
+      <div class="disc"><b>Alle 5</b><span>−33 %</span></div>
+    </div>
+    <p class="pricenote" style="margin-top:18px;">Jeder Start kann mit <b>14 Tagen Testphase mit allen Modulen</b> beginnen — ohne Zahlungsdaten,
+      endet automatisch. Oder du kaufst direkt: Konto anlegen, Module wählen, per Karte/SEPA bezahlen.</p>
+    <p class="pricenote" style="margin-top:8px;"><b>Jederzeit erweiterbar:</b> Ein Modul lässt sich mit einem Klick dazubuchen — die App zeigt sofort
+      den Mehrpreis und den neuen Paketpreis (inkl. wachsendem Rabatt). Alle Module laufen im Hintergrund immer mit;
+      nach der Freischaltung sind sie <b>sofort</b> nutzbar, ohne Datenverlust.</p>
   </div>
 </section>
 
@@ -231,25 +251,49 @@
 </footer>
 
 <script>
-// Preisrechner (Modul×MA) — Matrix muss zur Server-Config (config.MODULE_PRICING) passen.
+// Preisrechner (differenziert) — Werte müssen zur Server-Config passen
+// (config.MODULE_BASE_EUR, TIER_MULTIPLIER, BUNDLE_DISCOUNT).
 (function () {
-  var P = [[19,29,49],[35,54,90],[49,75,125],[59,92,155],[69,109,179]];
+  var BASE = { planung:14, einkauf:18, zeiten:20, auftraege:23, geld:28 };
+  var MULT = [1.0, 1.58, 2.6];
+  var DISC = [0, 0, 0.10, 0.18, 0.25, 0.33];
   var TIER = ['bis 5 Mitarbeiter','bis 10 Mitarbeiter','bis 25 Mitarbeiter'];
   var tier = 0;
   var pick = document.getElementById('modpick');
   var staffel = document.getElementById('staffel');
   if (!pick || !staffel) return;
   function boxes(){ return Array.prototype.slice.call(pick.querySelectorAll('input[type=checkbox]')); }
+  function unit(k){ return Math.round(BASE[k] * MULT[tier]); }
+  function fmt(n){ return n + ' €'; }
   function update(){
-    var checked = boxes().filter(function(b){ return b.checked; });
-    var n = checked.length;
+    var sel = boxes().filter(function(b){ return b.checked; }).map(function(b){ return b.value; });
+    var n = sel.length;
     boxes().forEach(function(b){ b.closest('label').classList.toggle('on', b.checked); });
-    var price = n ? P[n-1][tier] : 0;
+    // Einzelpreise je Modul in der Liste aktualisieren
+    pick.querySelectorAll('.mprice').forEach(function(el){ el.innerHTML = unit(el.dataset.k) + '&nbsp;€'; });
+    var listSum = sel.reduce(function(s,k){ return s + unit(k); }, 0);
+    var disc = DISC[Math.min(n, 5)] || 0;
+    var price = Math.round(listSum * (1 - disc));
+    var save = listSum - price;
     document.getElementById('calcPrice').textContent = price;
     document.getElementById('calcCount').textContent = n + ' von 5 Modulen · ' + TIER[tier];
+    var listEl = document.getElementById('calcList'), badge = document.getElementById('calcBadge'), saveEl = document.getElementById('calcSave');
+    if (n >= 2) {
+      listEl.textContent = fmt(listSum); listEl.style.display = '';
+      document.getElementById('calcListLbl').style.display = '';
+      badge.textContent = '−' + Math.round(disc*100) + ' %'; badge.style.display = '';
+      saveEl.textContent = 'Du sparst ' + fmt(save) + ' / Monat mit dem Paket'; saveEl.style.visibility = 'visible';
+    } else {
+      listEl.style.display = 'none'; badge.style.display = 'none';
+      document.getElementById('calcListLbl').style.display = 'none';
+      saveEl.style.visibility = 'hidden';
+    }
     var yr = document.getElementById('calcYear');
     yr.textContent = n ? (price*10) + ' € / Jahr (2 Monate geschenkt)' : 'Mindestens 1 Modul wählen';
     yr.style.visibility = n ? 'visible' : 'hidden';
+    // Direktkauf-Link um Auswahl + Staffel anreichern (die App kann es später auslesen)
+    var buy = document.getElementById('calcBuy');
+    if (buy) buy.href = '/app?action=buy&modules=' + encodeURIComponent(sel.join(',')) + '&tier=' + tier;
   }
   pick.addEventListener('change', update);
   staffel.querySelectorAll('button').forEach(function(btn){

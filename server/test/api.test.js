@@ -797,38 +797,43 @@ test('Modul×MA-Preismodell: Quote zeigt Mehrpreis + neuen Paketpreis, Upsell sc
   let acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.deepEqual(acc.data.tenant.modules, ['zeiten']);
   assert.equal(acc.data.tenant.pricing.moduleCount, 1);
-  // Standard-Staffel (1 Mitarbeiter) → bis 5, 1 Modul = 19 €
-  assert.equal(acc.data.tenant.pricing.monthlyEur, 19);
+  // Differenziert: „zeiten" allein, Staffel bis 5 (Standard 1 MA) = 20 €.
+  assert.equal(acc.data.tenant.pricing.monthlyEur, 20);
   assert.equal(acc.data.tenant.pricing.tier, 'bis 5');
 
-  // Quote für ein gesperrtes Modul mit 8 Mitarbeitern → Staffel bis 10.
-  // 1 Modul/bis10 = 29, 2 Module/bis10 = 54 → Mehrpreis 25.
+  // Quote für „geld" mit 8 Mitarbeitern → Staffel bis 10.
+  // zeiten bis10 = round(20×1.58)=32; +geld → (20+28)×1.58×0.9 = 68 → Mehrpreis 36.
   const q = await api('POST', '/api/billing/module-quote', { token: s.accessToken, body: { module: 'geld', employees: 8 } });
   assert.equal(q.status, 200, JSON.stringify(q.data));
   assert.equal(q.data.tier, 'bis 10');
   assert.equal(q.data.currentCount, 1);
-  assert.equal(q.data.currentMonthlyEur, 29);
-  assert.equal(q.data.addEur, 25, 'Mehrpreis für das 2. Modul');
+  assert.equal(q.data.currentMonthlyEur, 32);
+  assert.equal(q.data.addEur, 36, 'Mehrpreis für das 2. (Premium-)Modul geld');
   assert.equal(q.data.newCount, 2);
-  assert.equal(q.data.newMonthlyEur, 54, 'neuer Paketpreis');
+  assert.equal(q.data.newMonthlyEur, 68, 'neuer Paketpreis');
   assert.equal(q.data.owned, false);
 
   // accountInfo trägt den Upsell-Preis je gesperrtem Modul (für Klick-Anzeige)
   acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.equal(acc.data.tenant.pricing.employees, 8, 'Mitarbeiterzahl aus Quote übernommen');
-  assert.equal(acc.data.tenant.pricing.upsell.geld.addEur, 25);
-  assert.equal(acc.data.tenant.pricing.upsell.geld.newTotalEur, 54);
+  assert.equal(acc.data.tenant.pricing.upsell.geld.addEur, 36);
+  assert.equal(acc.data.tenant.pricing.upsell.geld.newTotalEur, 68);
+  // günstigeres Modul „planung" hat einen kleineren Mehrpreis als „geld"
+  assert.ok(acc.data.tenant.pricing.upsell.planung.addEur < acc.data.tenant.pricing.upsell.geld.addEur,
+    'differenzierter Mehrpreis: planung < geld');
 
-  // Self-Service-Kauf → sofort freigeschaltet, neuer Paketpreis 54
+  // Self-Service-Kauf → sofort freigeschaltet, neuer Paketpreis 68
   const buy = await api('POST', '/api/billing/buy-module', { token: s.accessToken, body: { module: 'geld', acceptTerms: true, employees: 8 } });
   assert.equal(buy.status, 201, JSON.stringify(buy.data));
-  assert.equal(buy.data.addEur, 25);
-  assert.equal(buy.data.newMonthlyEur, 54);
+  assert.equal(buy.data.addEur, 36);
+  assert.equal(buy.data.newMonthlyEur, 68);
   acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.ok(acc.data.tenant.modules.includes('geld'), 'Modul sofort nutzbar');
   assert.equal(acc.data.tenant.moduleStates.geld, 'on');
   assert.equal(acc.data.tenant.pricing.moduleCount, 2);
-  assert.equal(acc.data.tenant.pricing.monthlyEur, 54);
+  assert.equal(acc.data.tenant.pricing.monthlyEur, 68);
+  assert.equal(acc.data.tenant.pricing.discountPct, 10, '2 Module → 10 % Mengenrabatt');
+  assert.ok(acc.data.tenant.pricing.savingEur > 0, 'Ersparnis gegenüber Einzelpreisen ausgewiesen');
   assert.ok(!acc.data.tenant.pricing.upsell.geld, 'gekauftes Modul nicht mehr im Upsell');
 
   // Ungültiges Modul im Quote → 400

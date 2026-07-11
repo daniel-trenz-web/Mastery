@@ -79,10 +79,11 @@ test('Stripe-Checkout: liefert Checkout-URL statt sofortiger Aktivierung', async
   // Noch NICHT aktiv — erst nach Webhook.
   const acc = await api('GET', '/api/account', { token: s.accessToken });
   assert.equal(acc.data.tenant.plan, 'TRIAL', 'vor Zahlung bleibt es Testphase');
-  // Checkout-Session wurde mit tenant-Metadata + Preis 49 € (3 Module/bis5) angelegt.
+  // Checkout-Session mit tenant-Metadata + differenziertem Preis für BETRIEB
+  // (zeiten+auftraege+geld, bis5): (20+23+28)×0.82 = 58 € → 5800 Cent.
   const sess = calls.find((c) => c.path === '/v1/checkout/sessions');
   assert.ok(sess);
-  assert.ok(sess.body.includes('unit_amount%5D=4900'), 'Preis 49,00 € aus Modul×MA-Matrix');
+  assert.ok(sess.body.includes('unit_amount%5D=5800'), 'differenzierter Paketpreis 58,00 €');
   assert.ok(sess.body.includes('sepa_debit'), 'SEPA als Zahlart aktiv');
 });
 
@@ -141,8 +142,8 @@ test('Upsell mit bestehendem Abo: Modul sofort frei + Subscription-Proration', a
   const upd = newCalls.find((c) => /^\/v1\/subscriptions\/sub_test_1$/.test(c.path) && c.method === 'POST');
   assert.ok(upd, 'Subscription aktualisiert');
   assert.ok(upd.body.includes('proration_behavior=create_prorations'), 'anteilige Abrechnung');
-  // 2 Module/bis5 = 35 €
-  assert.equal(buy.data.newMonthlyEur, 35);
+  // zeiten+geld, bis5: (20+28)×0.9 = 43 €
+  assert.equal(buy.data.newMonthlyEur, 43);
 });
 
 test('Upsell ohne Abo: leitet zur Checkout-Seite (Modul erst nach Zahlung frei)', async () => {

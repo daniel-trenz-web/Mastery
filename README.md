@@ -78,17 +78,24 @@ Löschung mit Karenzfrist), Tarif-Gating, Path-Traversal, ZIP-Restore.
 | Aufträge & Baustelle (`auftraege`) | Berichte/Bautagebuch, Mängel, LVs, Controlling-Cockpit |
 | Einkauf & Lager (`einkauf`) | Lieferanten, Bestellungen, Eingangsrechnungen, Lager |
 
-**Preis richtet sich nur nach (a) Anzahl gewählter Module und (b) Mitarbeiter-Staffel** —
-kein Feature ist an die Betriebsgröße gekoppelt, auch der kleinste Betrieb kann alle fünf
-haben. Monatspreis netto pro Betrieb (`config.MODULE_PRICING`):
+**Jedes Modul hat einen eigenen Einzelpreis** (nach Wert differenziert), skaliert mit der
+Mitarbeiter-Staffel, und mehrere Module ergeben einen wachsenden **Mengenrabatt**. Kein
+Feature ist an die Betriebsgröße gekoppelt — auch der kleinste Betrieb kann alle fünf haben.
+Einzelpreise netto (Staffel bis 5, `config.MODULE_BASE_EUR`); ×1.58 für bis 10, ×2.6 für bis 25:
 
-| Umfang | bis 5 MA | bis 10 MA | bis 25 MA |
-|---|---|---|---|
-| 1 Modul | 19 € | 29 € | 49 € |
-| 2 Module | 35 € | 54 € | 90 € |
-| 3 Module | 49 € | 75 € | 125 € |
-| 4 Module | 59 € | 92 € | 155 € |
-| alle 5 (Komplett) | 69 € | 109 € | 179 € |
+| Modul | bis 5 MA |
+|---|---|
+| 📅 Planung | 14 € |
+| 🛒 Material & Lager | 18 € |
+| ⏱ Zeit & Team | 20 € |
+| 📋 Aufträge & Baustelle | 23 € |
+| 🧾 Angebote & Rechnungen | 28 € |
+
+Mengenrabatt (`config.BUNDLE_DISCOUNT`): 2 Module −10 %, 3 −18 %, 4 −25 %, alle 5 −33 %
+→ Komplett-Paket **69 / 109 / 180 €**. Preis einer Auswahl:
+`modulePriceFor(keys, employees) = round(Σ moduleUnitPrice(k) × (1 − rabatt))` (Unit-first-Rundung,
+damit angezeigte Einzelpreise transparent aufsummieren). `pricingInfo` liefert zusätzlich
+`listEur`/`savingEur`/`discountPct` und je Modul den differenzierten Upsell-Mehrpreis.
 
 **Self-Service-Upsell:** Klickt ein Mandant in der App auf ein gesperrtes Modul, zeigt der
 Sperrbildschirm sofort den **Mehrpreis** und den **neuen Paketpreis** (aus
