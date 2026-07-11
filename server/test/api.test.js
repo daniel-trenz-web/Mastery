@@ -841,6 +841,50 @@ test('Modul×MA-Preismodell: Quote zeigt Mehrpreis + neuen Paketpreis, Upsell sc
   assert.equal(bad.status, 400);
 });
 
+// ---------------------------------------------------------------------------
+test('Modul-Checkout: Auswahl aus dem Rechner → Module frei + Paketpreis', async () => {
+  const s = await register('Modulkauf GmbH', 'modulkauf@test.de');
+  // Ohne Stripe: sofort aktiv, Rechnung. zeiten+geld, bis5 = (20+28)*0.9 = 43 €.
+  const r = await api('POST', '/api/billing/checkout-modules', {
+    token: s.accessToken,
+    body: { modules: ['zeiten', 'geld'], employees: 3, acceptTerms: true, billing: { company: 'Modulkauf GmbH', address: 'Weg 1', zip: '10115', city: 'Berlin', email: 'r@test.de', payMethod: 'invoice' } },
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.data));
+  assert.equal(r.data.monthlyEur, 43);
+  assert.ok(r.data.tenant.modules.includes('zeiten') && r.data.tenant.modules.includes('geld'), 'beide Module frei');
+  assert.equal(r.data.tenant.moduleStates.geld, 'on');
+  assert.equal(r.data.tenant.pricing.monthlyEur, 43);
+  // Ohne Module → 400; ohne AGB → 400
+  const noMods = await api('POST', '/api/billing/checkout-modules', { token: s.accessToken, body: { modules: [], acceptTerms: true } });
+  assert.equal(noMods.status, 400);
+  const noTerms = await api('POST', '/api/billing/checkout-modules', { token: s.accessToken, body: { modules: ['zeiten'], billing: { company: 'X', address: 'A', zip: '1', city: 'B', email: 'x@y.de' } } });
+  assert.equal(noTerms.status, 400);
+});
+
+test('Magic-Login: Link anfordern (keine Enumeration) + einlösen', async () => {
+  const { sha256 } = require('../src/util');
+  const s = await register('Magic Login GmbH', 'magiclogin@test.de');
+  const owner = dbm.getUserByEmail('magiclogin@test.de');
+  // Anfordern: immer 200 (auch für unbekannte E-Mail), ohne Mail mailed:false
+  const req1 = await api('POST', '/api/auth/request-login-link', { body: { email: 'magiclogin@test.de' } });
+  assert.equal(req1.status, 200);
+  assert.equal(req1.data.ok, true);
+  assert.equal(req1.data.mailed, false, 'ohne Mail-Konfig kein Versand');
+  const req2 = await api('POST', '/api/auth/request-login-link', { body: { email: 'gibtsnicht@test.de' } });
+  assert.equal(req2.status, 200, 'keine User-Enumeration');
+  // Einlösen: Token direkt anlegen (im echten Betrieb per E-Mail) und konsumieren.
+  dbm.createMagicLink({ tenantId: s.tenant.id, createdBy: owner.id, role: 'owner-login', name: null, tokenHash: sha256('logintok'), maxUses: 1, expiresAt: new Date(Date.now() + 60e3).toISOString() });
+  const ok = await api('POST', '/api/auth/login-magic', { body: { token: 'logintok' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  assert.ok(ok.data.accessToken, 'Session ausgestellt');
+  assert.equal(ok.data.user.email, 'magiclogin@test.de');
+  // Zweite Nutzung (maxUses 1) → 401; unbekannter Token → 401
+  const reuse = await api('POST', '/api/auth/login-magic', { body: { token: 'logintok' } });
+  assert.equal(reuse.status, 401);
+  const bad = await api('POST', '/api/auth/login-magic', { body: { token: 'nope' } });
+  assert.equal(bad.status, 401);
+});
+
 test('KI-Lieferschein: ohne Key sauberer Fallback, Modul-Gate greift', async () => {
   const s = await register('KI-Beleg GmbH', 'kibeleg@test.de');
   const A = { headers: { 'X-Admin-Token': 'test-admin-token' } };

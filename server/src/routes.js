@@ -193,6 +193,19 @@ function handleStripeEvent(event) {
       const after = pricingInfo(dbm.getTenant(tenantId));
       dbm.setTenantSetting(tenantId, 'pendingCheckout', null);
       dbm.audit(tenantId, 'stripe', 'module.purchased-paid', { module: key, newMonthlyEur: after.monthlyEur, provider: 'stripe', stripeSubscription: obj.subscription });
+    } else if (kind === 'modules') {
+      const mods = (obj.metadata && obj.metadata.modules ? String(obj.metadata.modules).split(',') : (pending.modules || [])).filter((k) => cfg.SELLABLE_MODULES.includes(k));
+      if (!mods.length) return;
+      for (const k of mods) dbm.grantModule({ tenantId, moduleKey: k, status: 'active', priceEur: null, createdBy: 'stripe:webhook', note: 'gekauft' });
+      // Kauf legt den Modulumfang fest: gekaufte 'on', übrige verkaufbare 'locked'.
+      const ov = { ...((dbm.getTenantSettings(tenantId) || {}).moduleOverrides || {}) };
+      for (const k of cfg.SELLABLE_MODULES) ov[k] = mods.includes(k) ? 'on' : 'locked';
+      dbm.setTenantSetting(tenantId, 'moduleOverrides', ov);
+      const after = pricingInfo(dbm.getTenant(tenantId));
+      dbm.createSubscription({ tenantId, plan: tenant.plan || 'BETRIEB', priceEur: pending.amountEur != null ? pending.amountEur : after.monthlyEur, billing: pending.billing || { company: tenant.name, payMethod: 'card' }, source: 'website', createdBy: 'stripe:webhook' });
+      dbm.setTenantStatus(tenantId, 'active', null);
+      dbm.setTenantSetting(tenantId, 'pendingCheckout', null);
+      dbm.audit(tenantId, 'stripe', 'billing.checkout-modules-paid', { modules: mods, newMonthlyEur: after.monthlyEur, provider: 'stripe', stripeSubscription: obj.subscription });
     }
   } else if (event.type === 'customer.subscription.deleted') {
     // Abo bei Stripe beendet (Zahlungsausfall/Kündigung) → Lesemodus.
@@ -356,6 +369,54 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, issueSession(user, tenant, req));
   }
 
+  // Passwortloser Login-Link für Inhaber: schickt einen Magic-Link per E-Mail
+  // (kein Passwort nötig). Keine User-Enumeration — Antwort immer 200.
+  if (pathname === '/api/auth/request-login-link' && m === 'POST') {
+    if (!rateLimit('loginlink:' + clientIp(req), 10, 3600e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 8e3);
+    const email = normEmail(b.email || '');
+    const generic = { ok: true, mailed: mail.isConfigured() };
+    if (!isEmail(email)) return send(res, 200, generic);
+    const user = dbm.getUserByEmail(email);
+    if (user && user.role === 'owner' && user.status === 'active') {
+      const tenant = dbm.getTenant(user.tenant_id);
+      if (tenant && tenant.status === 'active') {
+        const { token, hash } = opaqueToken();
+        dbm.createMagicLink({
+          tenantId: tenant.id, createdBy: user.id, role: 'owner-login', name: null,
+          tokenHash: hash, maxUses: 1, expiresAt: new Date(Date.now() + 30 * 60e3).toISOString(),
+        });
+        dbm.audit(tenant.id, user.id, 'auth.login-link-requested', { ip: clientIp(req) });
+        const link = baseUrl(req) + '/app#login=' + token;
+        if (mail.isConfigured()) {
+          await mail.sendMail({
+            to: email, subject: 'Dein werkflow-Login-Link',
+            text: 'Hier ist dein Login-Link (30 Minuten gültig, einmalig):\n\n' + link + '\n\nWenn du das nicht angefordert hast, ignoriere diese E-Mail.',
+            html: '<p>Hier ist dein Login-Link (30 Minuten gültig, einmalig):</p><p><a href="' + link + '">Jetzt bei werkflow anmelden</a></p><p style="color:#888;font-size:12px;">Wenn du das nicht angefordert hast, ignoriere diese E-Mail.</p>',
+          }).catch(() => {});
+        }
+      }
+    }
+    return send(res, 200, generic);
+  }
+
+  // Login-Link einlösen → Session (nur owner-login-Tokens).
+  if (pathname === '/api/auth/login-magic' && m === 'POST') {
+    if (!rateLimit('loginmagic:' + clientIp(req), 30, 900e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 8e3);
+    const link = dbm.findMagicLink(sha256(String(b.token || '')));
+    if (!link || link.role !== 'owner-login' || new Date(link.expires_at).getTime() < Date.now() || link.uses >= link.max_uses) {
+      return err(res, 401, 'invalid-link');
+    }
+    const user = dbm.getUser(link.created_by);
+    const tenant = user && dbm.getTenant(user.tenant_id);
+    if (!user || !tenant || tenant.status !== 'active' || user.status !== 'active') return err(res, 403, 'unavailable');
+    dbm.useMagicLink(link.id);
+    dbm.touchLogin(user.id);
+    dbm.audit(tenant.id, user.id, 'auth.login-magic', { linkId: link.id, ip: clientIp(req) });
+    return send(res, 200, issueSession(user, tenant, req));
+  }
+
   // Einladungs-Link erzeugen (Chef/Büro)
   if (pathname === '/api/auth/invite' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return;
@@ -500,6 +561,69 @@ async function handleApi(req, res, pathname) {
       hint: billing.payMethod === 'sepa'
         ? 'Abo aktiv. Das SEPA-Mandat senden wir dir per E-Mail zu.'
         : 'Abo aktiv. Du erhältst eine Rechnung per E-Mail — zahlbar innerhalb 14 Tagen.',
+    });
+  }
+
+  // KAUFABSCHLUSS auf Modul-Basis (aus dem Preisrechner): der Kunde wählt eine
+  // freie Modulmenge + Mitarbeiter-Staffel und zahlt den Modul×MA-Paketpreis.
+  if (pathname === '/api/billing/checkout-modules' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireRole(ctx, res, ['owner'])) return;
+    const b = await readJson(req, 32e3);
+    const modules = (Array.isArray(b.modules) ? b.modules : []).filter((k) => cfg.SELLABLE_MODULES.includes(k));
+    if (!modules.length) return err(res, 400, 'no-modules');
+    if (b.acceptTerms !== true) return err(res, 400, 'terms-required', { hint: 'Bitte AGB und AV-Vertrag zustimmen.' });
+    const bill = b.billing || {};
+    const billing = {
+      company: String(bill.company || ctx.tenant.name).trim().slice(0, 160),
+      address: String(bill.address || '').trim().slice(0, 200),
+      zip: String(bill.zip || '').trim().slice(0, 12),
+      city: String(bill.city || '').trim().slice(0, 80),
+      ustId: String(bill.ustId || '').trim().slice(0, 32),
+      email: normEmail(bill.email || ctx.user.email || ''),
+      payMethod: bill.payMethod === 'sepa' ? 'sepa' : 'invoice',
+    };
+    if (billing.company.length < 2) return err(res, 400, 'invalid-company');
+    if (!billing.address || !billing.zip || !billing.city) return err(res, 400, 'address-required');
+    if (!isEmail(billing.email)) return err(res, 400, 'invalid-email');
+    if (b.employees != null && Number(b.employees) >= 1) dbm.setTenantSetting(ctx.tenant.id, 'employeeCount', Math.floor(Number(b.employees)));
+    const employees = tenantEmployees(ctx.tenant);
+    const amountEur = cfg.modulePriceFor(modules, employees);
+    // Ala-carte-Kauf legt die verkaufbaren Module exakt fest: gekaufte 'on',
+    // nicht gekaufte 'locked' (sichtbar-gesperrt, jederzeit dazubuchbar). Sonst
+    // blieben nach der Testphase alle TRIAL-Module fälschlich frei/berechnet.
+    function lockToPurchased() {
+      const ov = { ...((dbm.getTenantSettings(ctx.tenant.id) || {}).moduleOverrides || {}) };
+      for (const k of cfg.SELLABLE_MODULES) ov[k] = modules.includes(k) ? 'on' : 'locked';
+      dbm.setTenantSetting(ctx.tenant.id, 'moduleOverrides', ov);
+    }
+
+    if (stripe.isConfigured()) {
+      try {
+        const ids = stripeIds(ctx.tenant);
+        const session = await stripe.createCheckoutSession({
+          amountEur, productName: 'werkflow — ' + modules.length + ' Module (' + cfg.EMPLOYEE_TIERS[cfg.employeeTierIndex(employees)].label + ')',
+          tenantId: ctx.tenant.id, customerId: ids.customerId || undefined, customerEmail: ids.customerId ? undefined : billing.email,
+          successUrl: baseUrl(req) + '/app?checkout=success', cancelUrl: baseUrl(req) + '/app?checkout=cancel',
+          metadata: { kind: 'modules', modules: modules.join(',') },
+        });
+        dbm.setTenantSetting(ctx.tenant.id, 'pendingCheckout', { kind: 'modules', modules, billing, amountEur, sessionId: session.id });
+        // Module erst nach bestätigter Zahlung freischalten (Webhook), Preisbild aber vorbereiten.
+        dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.checkout-started', { modules, amountEur, provider: 'stripe' });
+        return send(res, 200, { ok: true, checkoutUrl: session.url, provider: 'stripe', monthlyEur: amountEur });
+      } catch (e) {
+        return err(res, 502, 'stripe-error', { hint: 'Zahlungsanbieter nicht erreichbar: ' + (e.message || 'unbekannt') });
+      }
+    }
+    // Ohne Stripe: Module sofort freischalten, Abrechnung auf Rechnung/SEPA.
+    for (const k of modules) dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: k, status: 'active', priceEur: null, createdBy: ctx.user.id, note: 'gekauft' });
+    lockToPurchased();
+    dbm.createSubscription({ tenantId: ctx.tenant.id, plan: ctx.tenant.plan || 'BETRIEB', priceEur: amountEur, billing, source: 'website', createdBy: ctx.user.id });
+    dbm.setTenantStatus(ctx.tenant.id, 'active', null);
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'billing.checkout-modules', { modules, amountEur, payMethod: billing.payMethod });
+    return send(res, 201, {
+      ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), monthlyEur: amountEur,
+      hint: modules.length + ' Module freigeschaltet — ' + amountEur + ' €/Monat (' + (billing.payMethod === 'sepa' ? 'SEPA-Mandat folgt' : 'auf Rechnung') + ').',
     });
   }
 
