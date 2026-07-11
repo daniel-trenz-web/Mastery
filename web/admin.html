@@ -82,6 +82,9 @@
     <div class="tabs">
       <button data-tab="tenants" class="on">🏢 Mandanten</button>
       <button data-tab="offers">📨 Vertriebs-Angebote</button>
+      <button data-tab="promos">🎯 Sonderangebote</button>
+      <button data-tab="support">📮 Support</button>
+      <button data-tab="crm">📊 Umsatz &amp; CRM</button>
       <button data-tab="leads">📇 Leads</button>
     </div>
     <div id="content"></div>
@@ -143,6 +146,9 @@
   function renderTab() {
     if (activeTab === 'tenants') renderTenants();
     else if (activeTab === 'offers') renderOffers();
+    else if (activeTab === 'promos') renderPromos();
+    else if (activeTab === 'support') renderSupport();
+    else if (activeTab === 'crm') renderCrm();
     else renderLeads();
   }
 
@@ -244,24 +250,56 @@
         b.onclick = function () {
           var row = document.getElementById('detail-' + b.dataset.detail);
           if (row.style.display !== 'none') { row.style.display = 'none'; return; }
-          api('GET', '/api/admin/tenants/' + b.dataset.detail).then(function (dr) {
+          var tid = b.dataset.detail;
+          api('GET', '/api/admin/tenants/' + tid).then(function (dr) {
             if (dr.s !== 200) return;
             var d = dr.j;
+            var roleOpts = function (cur) { return ['owner', 'office', 'employee', 'external'].map(function (rl) { return '<option value="' + rl + '"' + (cur === rl ? ' selected' : '') + '>' + rl + '</option>'; }).join(''); };
             var users = (d.users || []).map(function (u) {
-              return '<li>' + esc(u.name) + ' — ' + esc(u.role) + (u.email ? ' · ' + esc(u.email) : ' · Magic-Link') +
-                ' · letzter Login: ' + (u.last_login_at ? dt(u.last_login_at) : 'nie') + '</li>';
+              return '<li style="margin-bottom:4px;">' + esc(u.name) + (u.email ? ' · ' + esc(u.email) : ' · Magic-Link') +
+                ' · Login: ' + (u.last_login_at ? dt(u.last_login_at) : 'nie') +
+                ' <select data-urole="' + esc(u.id) + '" style="font-size:11px;padding:2px;">' + roleOpts(u.role) + '</select>' +
+                ' <button class="small ' + (u.status === 'active' ? 'red' : 'green') + '" data-ustatus="' + esc(u.id) + '" data-unext="' + (u.status === 'active' ? 'disabled' : 'active') + '">' + (u.status === 'active' ? 'Deaktivieren' : 'Aktivieren') + '</button></li>';
             }).join('');
             var bill = d.subscription ? d.subscription.billing || {} : null;
             row.style.display = '';
             row.querySelector('.detail').innerHTML =
-              '<b>Nutzer (' + (d.users || []).length + '):</b><ul style="margin:4px 0 10px 18px;">' + users + '</ul>' +
+              '<div class="row" style="margin-bottom:10px;gap:6px;">' +
+              '<button class="small green" data-slogin="' + esc(tid) + '">🔓 Support-Login</button>' +
+              '<button class="small ghost" data-audit="' + esc(tid) + '">📜 Voll-Audit</button>' +
+              (d.subscription ? '<button class="small red" data-subcancel="' + esc(tid) + '">Abo beenden</button>' : '') +
+              '<span id="slout-' + esc(tid) + '" class="muted"></span></div>' +
+              '<b>Nutzer (' + (d.users || []).length + '):</b><ul style="margin:4px 0 10px 18px;list-style:none;">' + users + '</ul>' +
               (d.subscription ? '<b>Abo:</b> ' + esc(d.subscription.plan) + ' · ' + eur(d.subscription.price_eur) + '/Monat · ' +
                 esc((bill.payMethod === 'sepa' ? 'SEPA' : 'Rechnung')) + ' · ' + esc(bill.company || '') + ', ' + esc(bill.address || '') + ', ' +
                 esc(bill.zip || '') + ' ' + esc(bill.city || '') + (bill.ustId ? ' · USt-ID ' + esc(bill.ustId) : '') +
                 ' · Rechnungs-Mail: ' + esc(bill.email || '') + '<br>' : '<b>Abo:</b> keins<br>') +
               '<b>Daten:</b> ' + (d.storageBytes / 1048576).toFixed(1) + ' MB · letzte Revision: ' +
               ((d.revisions || [])[0] ? dt(d.revisions[0].created_at) : 'nie') +
-              '<br><b>Letzte Aktivität:</b> ' + ((d.recentAudit || []).slice(-3).map(function (a2) { return esc(a2.action) + ' (' + dt(a2.ts) + ')'; }).join(' · ') || '—');
+              '<br><b>Letzte Aktivität:</b> ' + ((d.recentAudit || []).slice(-3).map(function (a2) { return esc(a2.action) + ' (' + dt(a2.ts) + ')'; }).join(' · ') || '—') +
+              '<div id="auditbox-' + esc(tid) + '"></div>';
+            var det = row.querySelector('.detail');
+            det.querySelectorAll('[data-urole]').forEach(function (sel) { sel.onchange = function () { api('POST', '/api/admin/tenants/' + tid + '/users/' + sel.dataset.urole, { role: sel.value }); }; });
+            det.querySelectorAll('[data-ustatus]').forEach(function (ub) { ub.onclick = function () { api('POST', '/api/admin/tenants/' + tid + '/users/' + ub.dataset.ustatus, { status: ub.dataset.unext }).then(function () { b.click(); b.click(); }); }; });
+            det.querySelector('[data-slogin]').onclick = function () {
+              api('POST', '/api/admin/tenants/' + tid + '/support-login').then(function (sr) {
+                if (sr.s !== 200) { document.getElementById('slout-' + tid).textContent = 'Fehler ' + sr.s; return; }
+                sessionStorage.setItem('werkos_session_v1', JSON.stringify(sr.j.session));
+                window.open('/app', '_blank');
+                document.getElementById('slout-' + tid).textContent = '→ als ' + esc(sr.j.as.name) + ' im neuen Tab geöffnet';
+              });
+            };
+            var sc = det.querySelector('[data-subcancel]');
+            if (sc) sc.onclick = function () { if (confirm('Abo dieses Mandanten beenden?')) api('POST', '/api/admin/tenants/' + tid + '/subscription/cancel').then(function () { b.click(); b.click(); refreshKpis(); }); };
+            det.querySelector('[data-audit]').onclick = function () {
+              api('GET', '/api/admin/tenants/' + tid + '/audit?limit=50').then(function (ar) {
+                var box = document.getElementById('auditbox-' + tid);
+                if (ar.s !== 200) { box.textContent = 'Fehler'; return; }
+                box.innerHTML = '<div style="margin-top:8px;"><b>Audit-Trail (' + ar.j.total + ' Einträge · Integrität: ' + (ar.j.integrityOk ? '✓ intakt' : '⚠ verletzt') + '):</b>' +
+                  '<div style="max-height:220px;overflow:auto;margin-top:5px;font-size:11.5px;">' +
+                  (ar.j.entries || []).map(function (a3) { return '<div class="muted">' + dt(a3.ts) + ' · ' + esc(a3.actor || '') + ' · <b>' + esc(a3.action) + '</b></div>'; }).join('') + '</div></div>';
+              });
+            };
           });
         };
       });
@@ -329,6 +367,119 @@
       el.querySelectorAll('[data-sorevoke]').forEach(function (b) {
         b.onclick = function () { if (confirm('Angebot widerrufen?')) api('POST', '/api/admin/sales-offers/' + b.dataset.sorevoke + '/revoke').then(function () { renderOffers(); refreshKpis(); }); };
       });
+    });
+  }
+
+  // ------------------------------------------------------------------ Sonderangebote (Popups)
+  function renderPromos() {
+    Promise.all([api('GET', '/api/admin/promos'), api('GET', '/api/admin/tenants')]).then(function (rr) {
+      var el = document.getElementById('content');
+      var tOpts = (rr[1].j.tenants || []).map(function (t) { return '<option value="' + esc(t.id) + '">' + esc(t.name) + '</option>'; }).join('');
+      var rows = (rr[0].j.promos || []).map(function (p) {
+        var st = p.stats || {};
+        return '<tr><td><b>' + esc(p.title) + '</b>' + (p.badge ? ' <span class="plan-badge plan-BETRIEB">' + esc(p.badge) + '</span>' : '') +
+          '<br><span class="muted">' + esc(p.body || '') + '</span></td>' +
+          '<td>' + esc(p.audience) + (p.audience === 'tenant' ? ' <span class="muted">' + esc(p.audience_tenant || '') + '</span>' : '') + '</td>' +
+          '<td>' + esc(p.cta_action || 'none') + (p.cta_label ? '<br><span class="muted">' + esc(p.cta_label) + (p.cta_target ? ' → ' + esc(p.cta_target) : '') + '</span>' : '') + '</td>' +
+          '<td><span class="st ' + (p.status === 'active' ? 'active' : 'revoked') + '">' + esc(p.status) + '</span><br>' +
+          '<span class="muted">👁 ' + (st.shown || 0) + ' · 👍 ' + (st.clicked || 0) + ' · ✖ ' + (st.dismissed || 0) + '</span></td>' +
+          '<td>' + (p.status === 'active' ? '<button class="small red" data-promopause="' + esc(p.id) + '">Pausieren</button>' :
+            '<button class="small green" data-promoresume="' + esc(p.id) + '">Aktiv</button>') +
+          ' <button class="small ghost" data-promoend="' + esc(p.id) + '">Beenden</button></td></tr>';
+      }).join('');
+      el.innerHTML =
+        '<div class="card"><b style="font-size:14px;">🎯 Neues Sonderangebot (erscheint den Kunden als Popup in der App)</b>' +
+        '<div class="form-grid" style="margin-top:12px;">' +
+        '<div><label>Titel *</label><input id="pmTitle" placeholder="z. B. Sommer-Aktion"></div>' +
+        '<div><label>Badge</label><input id="pmBadge" placeholder="-30 % / NEU"></div>' +
+        '<div><label>Zielgruppe</label><select id="pmAud"><option value="all">Alle Kunden</option><option value="trial">Nur Testphase</option><option value="active">Nur zahlende</option><option value="tenant">Ein Betrieb</option></select></div>' +
+        '<div id="pmTenantWrap" style="display:none;"><label>Betrieb</label><select id="pmTenant">' + tOpts + '</select></div>' +
+        '<div><label>Button-Text</label><input id="pmCtaLabel" placeholder="Jetzt sichern"></div>' +
+        '<div><label>Button-Aktion</label><select id="pmCtaAction"><option value="none">nur anzeigen</option><option value="buy">Zum Kauf</option><option value="module">Modul kaufen</option><option value="url">Link öffnen</option></select></div>' +
+        '<div><label>Button-Ziel (Modul-Key / URL)</label><input id="pmCtaTarget" placeholder="z. B. aufmass oder https://…"></div>' +
+        '<div><label>Läuft bis (optional)</label><input id="pmEnds" type="date"></div>' +
+        '</div>' +
+        '<label style="font-size:11px;font-weight:700;color:#456;display:block;margin:10px 0 3px;">Text</label>' +
+        '<textarea id="pmBody" rows="2" style="width:100%;" placeholder="Diesen Monat X % Rabatt auf …"></textarea>' +
+        '<div class="row" style="margin-top:10px;"><button class="green" id="pmGo">Kampagne schalten</button>' +
+        '<span class="muted">Kunden sehen das Popup einmalig, bis sie es wegklicken.</span></div><div class="err" id="pmErr"></div></div>' +
+        '<div class="card"><table><thead><tr><th>Kampagne</th><th>Zielgruppe</th><th>Button</th><th>Status / Reaktionen</th><th></th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="5" class="muted">Noch keine Kampagnen.</td></tr>') + '</tbody></table></div>';
+      document.getElementById('pmAud').onchange = function () { document.getElementById('pmTenantWrap').style.display = this.value === 'tenant' ? '' : 'none'; };
+      document.getElementById('pmGo').onclick = function () {
+        var body = { title: document.getElementById('pmTitle').value, body: document.getElementById('pmBody').value,
+          badge: document.getElementById('pmBadge').value, audience: document.getElementById('pmAud').value,
+          audienceTenant: document.getElementById('pmTenant') ? document.getElementById('pmTenant').value : null,
+          ctaLabel: document.getElementById('pmCtaLabel').value, ctaAction: document.getElementById('pmCtaAction').value,
+          ctaTarget: document.getElementById('pmCtaTarget').value, endsAt: document.getElementById('pmEnds').value ? new Date(document.getElementById('pmEnds').value).toISOString() : null };
+        api('POST', '/api/admin/promos', body).then(function (cr) {
+          if (cr.s !== 201) { document.getElementById('pmErr').textContent = 'Fehler: ' + esc((cr.j && cr.j.error) || cr.s); return; }
+          renderPromos();
+        });
+      };
+      el.querySelectorAll('[data-promopause]').forEach(function (b) { b.onclick = function () { api('POST', '/api/admin/promos/' + b.dataset.promopause + '/status', { status: 'paused' }).then(renderPromos); }; });
+      el.querySelectorAll('[data-promoresume]').forEach(function (b) { b.onclick = function () { api('POST', '/api/admin/promos/' + b.dataset.promoresume + '/status', { status: 'active' }).then(renderPromos); }; });
+      el.querySelectorAll('[data-promoend]').forEach(function (b) { b.onclick = function () { if (confirm('Kampagne beenden?')) api('POST', '/api/admin/promos/' + b.dataset.promoend + '/status', { status: 'ended' }).then(renderPromos); }; });
+    });
+  }
+
+  // ------------------------------------------------------------------ Support-Postfach
+  function renderSupport() {
+    api('GET', '/api/admin/support').then(function (r) {
+      var el = document.getElementById('content');
+      var rows = (r.j.tickets || []).map(function (t) {
+        var tr = [];
+        try { tr = JSON.parse(t.transcript_json || '[]'); } catch (e) { tr = []; }
+        var chat = tr.map(function (mm) { return '<div class="muted"><b>' + esc(mm.role === 'user' ? 'Kunde' : 'KI') + ':</b> ' + esc(mm.text) + '</div>'; }).join('');
+        return '<tr><td><b>' + esc(t.name || 'Anonym') + '</b><br><span class="muted">' + esc(t.email || '') + (t.phone ? ' · ' + esc(t.phone) : '') + '</span></td>' +
+          '<td>' + esc(t.source) + '<br><span class="muted">' + esc(t.topic || '') + '</span></td>' +
+          '<td>' + esc(t.message || '') + (chat ? '<details style="margin-top:5px;"><summary class="muted" style="cursor:pointer;">Chatverlauf</summary>' + chat + '</details>' : '') + '</td>' +
+          '<td><span class="st ' + (t.status === 'open' ? 'open' : 'accepted') + '">' + esc(t.status) + '</span><br><span class="muted">' + dt(t.created_at) + '</span></td>' +
+          '<td>' + (t.email ? '<a href="mailto:' + esc(t.email) + '"><button class="small">✉ Antworten</button></a> ' : '') +
+          (t.status === 'open' ? '<button class="small green" data-supclose="' + esc(t.id) + '">Erledigt</button>' : '') + '</td></tr>';
+      }).join('');
+      el.innerHTML = '<div class="card"><b style="font-size:14px;">📮 Support-Postfach — ' + (r.j.open || 0) + ' offen</b>' +
+        '<div class="muted" style="margin:4px 0 10px;">KI-Chat-Weiterleitungen &amp; Kontaktanfragen von Website und App.</div>' +
+        '<table><thead><tr><th>Kontakt</th><th>Quelle</th><th>Anliegen</th><th>Status</th><th></th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="5" class="muted">Keine Anfragen.</td></tr>') + '</tbody></table></div>';
+      el.querySelectorAll('[data-supclose]').forEach(function (b) { b.onclick = function () { api('POST', '/api/admin/support/' + b.dataset.supclose + '/close').then(renderSupport); }; });
+    });
+  }
+
+  // ------------------------------------------------------------------ Umsatz & CRM (HubSpot)
+  function renderCrm() {
+    Promise.all([api('GET', '/api/admin/revenue'), api('GET', '/api/admin/hubspot')]).then(function (rr) {
+      var el = document.getElementById('content');
+      var rev = rr[0].j || {}, hs = rr[1].j || {};
+      var planRows = Object.keys(rev.byPlan || {}).map(function (p) { return '<tr><td>' + esc((plans[p] || {}).label || p) + '</td><td><b>' + eur(rev.byPlan[p]) + '</b></td></tr>'; }).join('');
+      el.innerHTML =
+        '<div class="kpis">' +
+        '<div class="kpi green"><b>' + eur(rev.mrrEur) + '</b><span>MRR (Abos)</span></div>' +
+        '<div class="kpi"><b>' + eur(rev.addonEur) + '</b><span>Add-on-Module</span></div>' +
+        '<div class="kpi green"><b>' + eur(rev.totalEur) + '</b><span>Gesamt / Monat</span></div>' +
+        '<div class="kpi"><b>' + (rev.payingTenants || 0) + '</b><span>Zahlende Betriebe</span></div></div>' +
+        '<div class="card"><b style="font-size:14px;">💶 Umsatz nach Tarif</b>' +
+        '<table style="margin-top:10px;"><thead><tr><th>Tarif</th><th>MRR</th></tr></thead><tbody>' +
+        (planRows || '<tr><td colspan="2" class="muted">Noch kein wiederkehrender Umsatz.</td></tr>') + '</tbody></table></div>' +
+        '<div class="card"><b style="font-size:14px;">🔗 HubSpot-CRM</b>' +
+        '<div class="muted" style="margin:4px 0 10px;">Leads &amp; Mandanten als Kontakte ins HubSpot-CRM synchronisieren (Private-App-Token). ' +
+        'Status: ' + (hs.configured ? '<b style="color:#1e8449;">verbunden</b> (Token …' + esc((hs.tokenHint || '').replace('…', '')) + ')' + (hs.lastSync ? ' · letzter Sync ' + dt(hs.lastSync) : '') : '<b style="color:#c0392b;">nicht verbunden</b>') + '</div>' +
+        '<div class="form-grid"><div style="grid-column:span 2;"><label>Private-App-Token</label><input id="hsToken" type="password" placeholder="pat-eu1-…"></div>' +
+        '<div><label>Portal-ID (optional)</label><input id="hsPortal" placeholder="12345678"></div></div>' +
+        '<div class="row" style="margin-top:10px;"><button id="hsSave">Speichern</button>' +
+        '<button class="ghost" id="hsTest">Verbindung testen</button>' +
+        '<button class="green" id="hsSync">Jetzt synchronisieren</button><span id="hsOut" class="muted"></span></div></div>';
+      document.getElementById('hsSave').onclick = function () {
+        api('POST', '/api/admin/hubspot', { token: document.getElementById('hsToken').value, portalId: document.getElementById('hsPortal').value }).then(function () { renderCrm(); });
+      };
+      document.getElementById('hsTest').onclick = function () {
+        document.getElementById('hsOut').textContent = 'teste…';
+        api('POST', '/api/admin/hubspot/test').then(function (tr) { document.getElementById('hsOut').textContent = tr.j && tr.j.ok ? '✓ Verbindung ok' : '✗ ' + ((tr.j && tr.j.error) || tr.s); });
+      };
+      document.getElementById('hsSync').onclick = function () {
+        document.getElementById('hsOut').textContent = 'synchronisiere…';
+        api('POST', '/api/admin/hubspot/sync').then(function (sr) { document.getElementById('hsOut').textContent = sr.j && sr.j.ok ? ('✓ ' + sr.j.upserted + ' Kontakte synchronisiert') : '✗ ' + ((sr.j && sr.j.error) || sr.s); renderCrm(); });
+      };
     });
   }
 

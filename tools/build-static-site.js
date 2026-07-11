@@ -41,6 +41,9 @@ const LINKS = [
   ['href="/"', 'href="index.html"'],
 ];
 function relink(html) {
+  // Direktkauf-Deeplinks (/app?action=buy&modules=…) VOR der exakten /app-Regel
+  // umschreiben, sonst bleiben sie als absolute Route stehen und 404en auf Pages.
+  html = html.replace(/href="\/app(?=[?"])/g, 'href="app.html');
   for (const [from, to] of LINKS) html = html.split(from).join(to);
   return html;
 }

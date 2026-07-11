@@ -158,6 +158,64 @@ const SETUP_DOC_TOOL = {
   },
 };
 
+// Schema für den KI-Beratungs-Chatbot auf Website & in der App: liefert eine
+// deutsche Antwort plus strukturierte Steuerinfos (Modul-Empfehlung, Kauf-CTA,
+// Support-Weiterleitung), damit die UI passend reagieren kann.
+const CHAT_TOOL = {
+  name: 'chat_antwort',
+  description: 'Freundliche, konkrete Beratungsantwort für einen Handwerksbetrieb zum Produkt werkflow — plus strukturierte Hinweise für die Oberfläche.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      reply: { type: 'string', description: 'Die Antwort an den Nutzer, auf Deutsch, freundlich und konkret (max ~120 Wörter). Bei Unsicherheit ehrlich sagen und Support anbieten.' },
+      suggestedModules: {
+        type: 'array', description: 'Schlüssel der Module, die zur Frage passen (nur aus: planung, einkauf, zeiten, auftraege, geld, aufmass, website).',
+        items: { type: 'string' },
+      },
+      wantsHuman: { type: 'boolean', description: 'true, wenn der Nutzer einen Menschen/Support möchte oder die Frage nicht produktbezogen beantwortbar ist (Vertrag, individuelle Preise, Beschwerde, Datenschutz-Auskunft, technisches Problem).' },
+      leadIntent: { type: 'boolean', description: 'true, wenn klare Kaufabsicht erkennbar ist (fragt nach Preis für seinen Betrieb, Demo, Loslegen).' },
+      topic: { type: 'string', description: 'Kurzes Stichwort zum Thema (z. B. „Preis", „Aufmaß", „DATEV", „Support").' },
+    },
+    required: ['reply'],
+  },
+};
+
+// Schema für das KI-Aufmaß aus einem Grundriss/Plan (Foto oder PDF): erzeugt
+// eine Aufmaßtabelle mit Raumnummern und Maßen, damit Umfang/Flächen automatisch
+// berechnet werden, wenn nichts von Hand erfasst wurde.
+const FLOOR_PLAN_TOOL = {
+  name: 'grundriss_aufmass',
+  description: 'Aus einem Grundriss / Bauplan (Foto oder PDF) eine strukturierte Aufmaßtabelle mit Räumen, Raumnummern und Maßen ableiten.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      scale: { type: 'string', description: 'Erkannter Maßstab, z. B. „1:100" oder „unbekannt".' },
+      unit: { type: 'string', description: 'Einheit der Maße im Plan (m oder cm). Gib Maße in Metern zurück.' },
+      rooms: {
+        type: 'array',
+        description: 'Alle erkennbaren Räume/Flächen im Plan.',
+        items: {
+          type: 'object',
+          properties: {
+            number: { type: 'string', description: 'Raumnummer laut Plan (z. B. „1", „01", „EG.02"), falls vorhanden.' },
+            name: { type: 'string', description: 'Raumbezeichnung (z. B. Wohnzimmer, Bad, Flur).' },
+            length: { type: 'number', description: 'Länge in Metern, falls aus Bemaßung/Maßstab ableitbar.' },
+            width: { type: 'number', description: 'Breite in Metern.' },
+            height: { type: 'number', description: 'Raumhöhe in Metern, falls angegeben (sonst weglassen).' },
+            area: { type: 'number', description: 'Grundfläche in m², falls direkt angeschrieben oder aus L×B berechenbar.' },
+            perimeter: { type: 'number', description: 'Umfang in m, falls ableitbar.' },
+            note: { type: 'string', description: 'Kurzer Hinweis bei Unsicherheit (z. B. „Maß geschätzt").' },
+          },
+          required: ['name'],
+        },
+      },
+      confidence: { type: 'number', description: 'Selbsteinschätzung der Lesbarkeit/Genauigkeit 0..1.' },
+      warnings: { type: 'array', items: { type: 'string' }, description: 'Wichtige Vorbehalte (z. B. „kein Maßstab erkennbar — Maße bitte prüfen").' },
+    },
+    required: ['rooms'],
+  },
+};
+
 function isConfigured() { return !!cfg.AI_API_KEY; }
 
 async function callClaude(body) {
@@ -281,4 +339,62 @@ async function extractSetupDocument(buffer, mediaType, hint) {
   });
 }
 
-module.exports = { isConfigured, extractDeliveryNote, extractIncomingInvoice, generateWebsiteContent, extractSetupDocument };
+// KI-Beratungs-Chatbot: beantwortet Produktfragen von (potenziellen) Kunden.
+// history: [{role:'user'|'assistant', text}], context: {price info, moduleCatalog}.
+// Ohne Key → { configured:false } (die UI zeigt dann direkt das Support-Formular).
+const CHAT_SYSTEM = 'Du bist der freundliche Produktberater von „werkflow", einer modularen '
+  + 'Handwerker-Software für deutsche Handwerks- und Baubetriebe (GoBD-/DSGVO-konform). '
+  + 'Module: Einsatzplanung (planung), Einkauf & Lager (einkauf), Zeiten & Team (zeiten), '
+  + 'Aufträge & Baustelle (auftraege), Angebote & Rechnungen inkl. E-Rechnung/DATEV (geld), '
+  + 'Aufmaß & Raumplan (aufmass), Website-Baukasten (website). Jedes Modul hat einen eigenen '
+  + 'Monatspreis, bei mehreren Modulen gibt es Mengenrabatt; Abrechnung pro Betrieb, nicht pro Nutzer. '
+  + '14 Tage kostenlos testen, keine Installation (läuft im Browser), Einrichtung per KI aus hochgeladenen '
+  + 'Dokumenten. Antworte kurz, ehrlich und konkret auf Deutsch. Erfinde keine Preise/Zusagen — bei '
+  + 'individuellen Preisen, Verträgen, Beschwerden, Rechts-/Datenschutzauskünften oder technischen '
+  + 'Problemen biete die Weiterleitung an einen Menschen an (wantsHuman=true).';
+
+async function chatReply(history, context) {
+  if (!isConfigured()) return { configured: false };
+  const msgs = (Array.isArray(history) ? history : [])
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: [{ type: 'text', text: String(m.text).slice(0, 2000) }] }));
+  if (!msgs.length || msgs[msgs.length - 1].role !== 'user') return { configured: true, ok: false, error: 'no-user-message' };
+  const ctx = context && Object.keys(context).length ? ('\n\nKontext (Preise/Module dieses Interessenten):\n' + JSON.stringify(context).slice(0, 4000)) : '';
+  return callClaude({
+    model: cfg.AI_MODEL,
+    max_tokens: 700,
+    system: CHAT_SYSTEM + ctx,
+    tools: [CHAT_TOOL],
+    tool_choice: { type: 'tool', name: 'chat_antwort' },
+    messages: msgs,
+  });
+}
+
+// KI-Aufmaß: Grundriss/Plan (Foto oder PDF) → Aufmaßtabelle mit Räumen & Maßen.
+async function extractFloorPlan(buffer, mediaType, hint) {
+  if (!isConfigured()) return { configured: false };
+  if (buffer.length > cfg.MAX_AI_IMAGE_BYTES) return { configured: true, ok: false, error: 'file-too-large' };
+  const hintTxt = hint ? ('\nHinweis des Nutzers: „' + String(hint).slice(0, 80) + '".') : '';
+  return callClaude({
+    model: cfg.AI_MODEL,
+    max_tokens: 4000,
+    tools: [FLOOR_PLAN_TOOL],
+    tool_choice: { type: 'tool', name: 'grundriss_aufmass' },
+    messages: [{
+      role: 'user',
+      content: [
+        mediaBlock(buffer, mediaType),
+        {
+          type: 'text',
+          text: 'Dies ist ein Grundriss / Bauplan. Leite eine Aufmaßtabelle ab: pro Raum Raumnummer, '
+            + 'Bezeichnung und — soweit aus Bemaßung oder Maßstab ableitbar — Länge, Breite, Höhe, Fläche (m²) '
+            + 'und Umfang (m). Gib Maße in Metern. Rechne nur, was der Plan hergibt; markiere Geschätztes im '
+            + 'note-Feld und nenne fehlende Angaben in warnings. Erfinde keine Maße.' + hintTxt,
+        },
+      ],
+    }],
+  });
+}
+
+module.exports = { isConfigured, extractDeliveryNote, extractIncomingInvoice, generateWebsiteContent, extractSetupDocument, chatReply, extractFloorPlan };

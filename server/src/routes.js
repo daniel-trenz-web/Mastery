@@ -21,6 +21,7 @@ const datanorm = require('./integrations/datanorm');
 const ugl = require('./integrations/ugl');
 const ids = require('./integrations/ids');
 const lexoffice = require('./integrations/lexoffice');
+const hubspot = require('./integrations/hubspot');
 const sitegen = require('./integrations/sitegen');
 const xrechnung = require('./integrations/xrechnung');
 const gaeb = require('./integrations/gaeb');
@@ -481,6 +482,59 @@ async function handleApi(req, res, pathname) {
     return send(res, 201, Object.assign({ password }, session));
   }
 
+  // ---------- KI-BERATUNGS-CHATBOT (öffentlich, für Website & App) ----------
+  // Beantwortet Produktfragen; leitet bei Bedarf an den Support weiter (Ticket).
+  if (pathname === '/api/chat' && m === 'POST') {
+    if (!rateLimit('chat:' + clientIp(req), 30, 3600e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 48e3);
+    const history = (Array.isArray(b.messages) ? b.messages : [])
+      .filter((mm) => mm && (mm.role === 'user' || mm.role === 'assistant') && typeof mm.text === 'string')
+      .slice(-12);
+    // Preis-/Modul-Kontext, damit die KI konkret antworten kann.
+    const chatCtx = {
+      modulePreiseAb5MA: cfg.MODULE_BASE_EUR,
+      staffeln: cfg.EMPLOYEE_TIERS.map((t) => t.label),
+      mengenrabattProzent: cfg.BUNDLE_DISCOUNT.map((d) => Math.round(d * 100)),
+      module: Object.fromEntries(Object.entries(cfg.MODULES).map(([k, v]) => [k, v.label + ' — ' + v.desc])),
+    };
+    // Ohne KI-Key: sauberer Fallback → direkt Support-Kontakt anbieten.
+    if (!ai.isConfigured()) {
+      return send(res, 200, { configured: false, reply: 'Der KI-Berater ist gerade nicht verfügbar. Schreib uns kurz dein Anliegen — wir melden uns persönlich.', wantsHuman: true });
+    }
+    const r = await ai.chatReply(history, chatCtx);
+    if (!r.ok) return send(res, 200, { configured: true, ok: false, reply: 'Das habe ich nicht verstanden — magst du es anders formulieren? Sonst leite ich dich gern an unseren Support weiter.', wantsHuman: true });
+    const d = r.data || {};
+    // Kaufabsicht/Support-Wunsch als Lead protokollieren, wenn Kontakt mitkam.
+    if ((d.wantsHuman || b.requestHuman) && (isEmail(normEmail(b.email)) || b.name)) {
+      dbm.createSupportTicket({
+        source: 'chat', name: String(b.name || '').slice(0, 120), email: normEmail(b.email) || null,
+        phone: String(b.phone || '').slice(0, 60) || null, topic: d.topic || 'Chat',
+        message: (history.filter((h) => h.role === 'user').slice(-1)[0] || {}).text || '',
+        transcript: history.concat([{ role: 'assistant', text: d.reply || '' }]),
+      });
+    }
+    return send(res, 200, {
+      configured: true, ok: true, reply: d.reply || '',
+      wantsHuman: !!d.wantsHuman, leadIntent: !!d.leadIntent,
+      suggestedModules: (d.suggestedModules || []).filter((k) => cfg.MODULES[k]), topic: d.topic || null,
+    });
+  }
+
+  // Support-Ticket direkt aus dem Chat-Kontaktformular (auch ohne KI-Key).
+  if (pathname === '/api/chat/handoff' && m === 'POST') {
+    if (!rateLimit('handoff:' + clientIp(req), 10, 3600e3)) return err(res, 429, 'rate-limited');
+    const b = await readJson(req, 48e3);
+    const email = normEmail(b.email);
+    if (!isEmail(email) && !String(b.phone || '').trim()) return err(res, 400, 'contact-required', { hint: 'Bitte E-Mail oder Telefon angeben.' });
+    const sid = dbm.createSupportTicket({
+      source: 'contact', name: String(b.name || '').slice(0, 120), email: email || null,
+      phone: String(b.phone || '').slice(0, 60) || null, topic: String(b.topic || 'Kontakt').slice(0, 80),
+      message: String(b.message || '').slice(0, 2000),
+      transcript: Array.isArray(b.messages) ? b.messages.slice(-12) : [],
+    });
+    return send(res, 201, { ok: true, ticketId: sid });
+  }
+
   // ---------- KONTO ----------
   if (pathname === '/api/account' && m === 'GET') {
     const ctx = requireAuth(req, res); if (!ctx) return;
@@ -491,6 +545,28 @@ async function handleApi(req, res, pathname) {
       storageBytes: dbm.tenantStorageBytes(ctx.tenant.id),
       plans: cfg.PLANS,
     });
+  }
+
+  // Aktives Host-Sonderangebot für diesen Mandanten (Popup in der App).
+  if (pathname === '/api/t/promo/active' && m === 'GET') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    const p = dbm.activePromoForTenant(ctx.tenant);
+    if (!p) return send(res, 200, { promo: null });
+    dbm.recordPromoEvent(p.id, ctx.tenant.id, 'shown');
+    return send(res, 200, { promo: {
+      id: p.id, title: p.title, body: p.body, badge: p.badge,
+      ctaLabel: p.cta_label, ctaAction: p.cta_action, ctaTarget: p.cta_target, endsAt: p.ends_at,
+    } });
+  }
+  // Reaktion des Mandanten auf ein Sonderangebot (clicked | dismissed).
+  const promoEv = pathname.match(/^\/api\/t\/promo\/([^/]+)\/event$/);
+  if (promoEv && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    const b = await readJson(req, 4e3);
+    const kind = ['clicked', 'dismissed'].includes(b.kind) ? b.kind : null;
+    if (!kind) return err(res, 400, 'invalid-kind');
+    if (dbm.getPromo(promoEv[1])) dbm.recordPromoEvent(promoEv[1], ctx.tenant.id, kind);
+    return send(res, 200, { ok: true });
   }
 
   // KAUFABSCHLUSS: Tarif + Rechnungsdaten + AGB-Zustimmung → aktives Abo.
@@ -844,6 +920,32 @@ async function handleApi(req, res, pathname) {
     return send(res, 200, result);
   }
 
+  // KI-Aufmaß: Grundriss/Bauplan (Foto oder PDF) → Aufmaßtabelle mit Räumen.
+  // Fläche/Umfang werden serverseitig aus L×B ergänzt, wenn die KI sie auslässt,
+  // damit Umfang/Fläche auch ohne manuelle Erfassung berechnet sind.
+  if (pathname === '/api/t/ai/floor-plan' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    if (!requireWritable(ctx, res, cfg.PLANS)) return;
+    if (!moduleAllowed(ctx.tenant, 'aufmass')) return err(res, 403, 'module-not-active', { module: 'aufmass' });
+    if (!ai.isConfigured()) return send(res, 200, { configured: false, hint: 'KI-Aufmaß ist nicht aktiviert — bitte Räume und Maße manuell erfassen (dein Plan bleibt als Datei gespeichert).' });
+    const buf = await readBody(req, cfg.MAX_AI_IMAGE_BYTES + 1024);
+    const ctype = (req.headers['content-type'] || 'image/jpeg').split(';')[0];
+    const hint = String(req.headers['x-doc-hint'] || '');
+    const result = await ai.extractFloorPlan(buf, ctype, hint);
+    if (result && result.ok && result.data && Array.isArray(result.data.rooms)) {
+      const r2 = (x) => Math.round(x * 100) / 100;
+      result.data.rooms = result.data.rooms.map((room) => {
+        const o = Object.assign({}, room);
+        const L = Number(o.length) || 0, W = Number(o.width) || 0;
+        if (!(Number(o.area) > 0) && L > 0 && W > 0) o.area = r2(L * W);
+        if (!(Number(o.perimeter) > 0) && L > 0 && W > 0) o.perimeter = r2(2 * (L + W));
+        return o;
+      });
+    }
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'ai.floor-plan', { ok: !!(result && result.ok), rooms: result && result.data ? (result.data.rooms || []).length : 0 });
+    return send(res, 200, result);
+  }
+
   if (pathname === '/api/t/files' && m === 'GET') {
     const ctx = requireAuth(req, res); if (!ctx) return;
     return send(res, 200, { files: dbm.listFiles(ctx.tenant.id) });
@@ -1098,6 +1200,7 @@ async function handleApi(req, res, pathname) {
   // ---------- PLATTFORM-ADMIN ----------
   if (pathname.startsWith('/api/admin/')) {
     if (!cfg.ADMIN_TOKEN || req.headers['x-admin-token'] !== cfg.ADMIN_TOKEN) return err(res, 401, 'unauthorized');
+    const query = Object.fromEntries(new URL(req.url, 'http://x').searchParams);
     // Plattform-Übersicht: KPIs für die Admin-Zentrale
     if (pathname === '/api/admin/overview' && m === 'GET') {
       return send(res, 200, { stats: dbm.platformStats(), plans: cfg.PLANS, moduleCatalog: cfg.MODULES });
@@ -1245,6 +1348,141 @@ async function handleApi(req, res, pathname) {
     if (pathname === '/api/admin/leads' && m === 'GET') return send(res, 200, { leads: dbm.listLeads() });
     const leadDel = pathname.match(/^\/api\/admin\/leads\/([^/]+)$/);
     if (leadDel && m === 'DELETE') { dbm.deleteLead(leadDel[1]); return send(res, 200, { ok: true }); }
+
+    // Voller Audit-Trail eines Mandanten (paginierbar) + Hash-Ketten-Integrität.
+    const tAudit = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/audit$/);
+    if (tAudit && m === 'GET') {
+      const t = dbm.getTenant(tAudit[1]);
+      if (!t) return err(res, 404, 'not-found');
+      const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+      const offset = Math.max(Number(query.offset) || 0, 0);
+      const verify = dbm.auditVerify(t.id);
+      return send(res, 200, { entries: dbm.auditList(t.id, limit, offset), total: verify.entries, integrityOk: verify.ok, limit, offset });
+    }
+
+    // Support-Login (Impersonation): kurzlebige Owner-Session für den Support.
+    const tSupport = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/support-login$/);
+    if (tSupport && m === 'POST') {
+      const t = dbm.getTenant(tSupport[1]);
+      if (!t || t.status === 'deleted') return err(res, 404, 'not-found');
+      const owner = dbm.listUsers(t.id).find((u) => u.role === 'owner' && u.status === 'active') || dbm.listUsers(t.id)[0];
+      if (!owner) return err(res, 404, 'no-user');
+      const session = issueSession(dbm.getUser(owner.id), t, req);
+      dbm.audit(t.id, 'platform-admin', 'support.login', { as: owner.id });
+      return send(res, 200, { ok: true, session, tenantId: t.id, as: { id: owner.id, name: owner.name, email: owner.email } });
+    }
+
+    // Abo eines Mandanten beenden (Host, z. B. Storno/Refund-Vorbereitung).
+    const tSubCancel = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/subscription\/cancel$/);
+    if (tSubCancel && m === 'POST') {
+      const t = dbm.getTenant(tSubCancel[1]);
+      if (!t) return err(res, 404, 'not-found');
+      dbm.cancelSubscription(t.id);
+      dbm.audit(t.id, 'platform-admin', 'billing.subscription-cancelled', {});
+      return send(res, 200, { ok: true });
+    }
+
+    // Nutzerverwaltung: Status (aktiv/deaktiviert) oder Rolle ändern.
+    const tUser = pathname.match(/^\/api\/admin\/tenants\/([^/]+)\/users\/([^/]+)$/);
+    if (tUser && m === 'POST') {
+      const t = dbm.getTenant(tUser[1]);
+      if (!t) return err(res, 404, 'not-found');
+      const u = dbm.getUser(tUser[2]);
+      if (!u || u.tenant_id !== t.id) return err(res, 404, 'no-user');
+      const b = await readJson(req, 8e3);
+      if (b.status && ['active', 'disabled'].includes(b.status)) {
+        dbm.db.prepare('UPDATE users SET status = ? WHERE id = ?').run(b.status, u.id);
+        if (b.status === 'disabled') dbm.revokeUserSessions(u.id);
+      }
+      if (b.role && ['owner', 'office', 'employee', 'external'].includes(b.role)) {
+        dbm.db.prepare('UPDATE users SET role = ? WHERE id = ?').run(b.role, u.id);
+      }
+      dbm.audit(t.id, 'platform-admin', 'user.updated', { user: u.id, status: b.status, role: b.role });
+      return send(res, 200, { ok: true, users: dbm.listUsers(t.id) });
+    }
+
+    // Umsatz-Übersicht: MRR nach Tarif + Add-on-Modul-Umsatz.
+    if (pathname === '/api/admin/revenue' && m === 'GET') {
+      const byPlan = {}; let mrr = 0, addon = 0, paying = 0;
+      for (const t of dbm.listTenants()) {
+        if (t.status === 'deleted') continue;
+        const sub = dbm.getActiveSubscription(t.id);
+        if (sub && sub.price_eur > 0) { byPlan[sub.plan] = (byPlan[sub.plan] || 0) + sub.price_eur; mrr += sub.price_eur; paying++; }
+        for (const g of dbm.activeGrants(t.id)) if (g.status === 'active' && g.price_eur) addon += g.price_eur;
+      }
+      return send(res, 200, { mrrEur: mrr, addonEur: addon, totalEur: mrr + addon, payingTenants: paying, byPlan });
+    }
+
+    // Sonderangebote / Host-Kampagnen
+    if (pathname === '/api/admin/promos' && m === 'GET') {
+      return send(res, 200, { promos: dbm.listPromos().map((p) => Object.assign({}, p, { stats: dbm.promoStats(p.id) })) });
+    }
+    if (pathname === '/api/admin/promos' && m === 'POST') {
+      const b = await readJson(req, 16e3);
+      if (String(b.title || '').trim().length < 2) return err(res, 400, 'invalid-title');
+      if (!['all', 'trial', 'active', 'tenant'].includes(b.audience || 'all')) return err(res, 400, 'invalid-audience');
+      if (b.audience === 'tenant' && !dbm.getTenant(b.audienceTenant || '')) return err(res, 400, 'invalid-tenant');
+      const p = dbm.createPromo({
+        title: String(b.title).trim().slice(0, 120), body: String(b.body || '').slice(0, 1000),
+        ctaLabel: String(b.ctaLabel || '').slice(0, 60) || null,
+        ctaAction: ['buy', 'module', 'url', 'none'].includes(b.ctaAction) ? b.ctaAction : 'none',
+        ctaTarget: String(b.ctaTarget || '').slice(0, 300) || null, badge: String(b.badge || '').slice(0, 24) || null,
+        audience: b.audience || 'all', audienceTenant: b.audience === 'tenant' ? b.audienceTenant : null,
+        startsAt: b.startsAt || null, endsAt: b.endsAt || null,
+      });
+      return send(res, 201, { ok: true, promo: p });
+    }
+    const promoStatus = pathname.match(/^\/api\/admin\/promos\/([^/]+)\/status$/);
+    if (promoStatus && m === 'POST') {
+      const b = await readJson(req, 4e3);
+      if (!['active', 'paused', 'ended'].includes(b.status)) return err(res, 400, 'invalid-status');
+      if (!dbm.getPromo(promoStatus[1])) return err(res, 404, 'not-found');
+      dbm.setPromoStatus(promoStatus[1], b.status);
+      return send(res, 200, { ok: true });
+    }
+
+    // Support-Postfach (KI-Chat-Weiterleitungen + Kontaktanfragen)
+    if (pathname === '/api/admin/support' && m === 'GET') {
+      return send(res, 200, { tickets: dbm.listSupportTickets(query.status || null, 200), open: dbm.countOpenSupportTickets() });
+    }
+    const supClose = pathname.match(/^\/api\/admin\/support\/([^/]+)\/close$/);
+    if (supClose && m === 'POST') { dbm.setSupportTicketStatus(supClose[1], 'done'); return send(res, 200, { ok: true }); }
+
+    // HubSpot-CRM-Anbindung (Host): Token speichern, testen, Leads synchronisieren.
+    if (pathname === '/api/admin/hubspot' && m === 'GET') {
+      const s = dbm.getPlatformSetting('hubspot') || {};
+      return send(res, 200, { configured: !!s.token, portalId: s.portalId || null, lastSync: s.lastSync || null, tokenHint: s.token ? ('…' + String(s.token).slice(-4)) : null });
+    }
+    if (pathname === '/api/admin/hubspot' && m === 'POST') {
+      const b = await readJson(req, 8e3);
+      const cur = dbm.getPlatformSetting('hubspot') || {};
+      if (b.token !== undefined) cur.token = String(b.token || '').trim();
+      if (b.portalId !== undefined) cur.portalId = String(b.portalId || '').trim();
+      dbm.setPlatformSetting('hubspot', cur);
+      return send(res, 200, { ok: true, configured: !!cur.token });
+    }
+    if (pathname === '/api/admin/hubspot/test' && m === 'POST') {
+      const s = dbm.getPlatformSetting('hubspot') || {};
+      return send(res, 200, await hubspot.testConnection(s.token || ''));
+    }
+    if (pathname === '/api/admin/hubspot/sync' && m === 'POST') {
+      const s = dbm.getPlatformSetting('hubspot') || {};
+      if (!s.token) return err(res, 400, 'not-configured', { hint: 'Bitte zuerst einen HubSpot Private-App-Token hinterlegen.' });
+      // Leads + Mandanten als Kontakte upserten.
+      const contacts = [];
+      for (const l of dbm.listLeads()) contacts.push({ email: l.email, firstname: l.name, company: l.company, phone: l.phone, source: l.source });
+      for (const t of dbm.listTenants()) {
+        if (t.status === 'deleted') continue;
+        const owner = dbm.listUsers(t.id).find((u) => u.role === 'owner');
+        if (owner && owner.email) contacts.push({ email: owner.email, firstname: owner.name, company: t.name, lifecyclestage: t.plan === 'TRIAL' ? 'opportunity' : 'customer' });
+      }
+      const r = await hubspot.syncContacts(s.token, contacts);
+      const cur = dbm.getPlatformSetting('hubspot') || {};
+      cur.lastSync = new Date().toISOString();
+      dbm.setPlatformSetting('hubspot', cur);
+      return send(res, 200, Object.assign({ ok: r.ok, attempted: contacts.length }, r));
+    }
+
     return err(res, 404, 'not-found');
   }
 
@@ -1432,6 +1670,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // Bank: Kontoauszug importieren + Zahlungsabgleich
   if (pathname === '/api/t/bank/import' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const buf = await readBody(req, cfg.MAX_FILE_BYTES);
     const out = bankstmt.parseStatement(buf, req.headers['content-type'] || '');
@@ -1439,6 +1678,7 @@ async function handleIntegrations(req, res, pathname, m) {
   }
   if (pathname === '/api/t/bank/reconcile' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const b = await readJson(req, 4e6);
     return send(res, 200, reconcile(b.transactions || [], b.openItems || [], b.opts || {}));
@@ -1447,6 +1687,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // DATEV-Export
   if (pathname === '/api/t/datev/export' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const b = await readJson(req, 4e6);
     const bookings = b.bookings || datev.invoicesToBookings(b.items || [], b.cfg || {});
@@ -1458,12 +1699,14 @@ async function handleIntegrations(req, res, pathname, m) {
   // Lexoffice: Verbindung testen / Beleg übertragen
   if (pathname === '/api/t/lexoffice/test' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const key = (safeParse(dbm.getIntegration(ctx.tenant.id, 'lexoffice') || {}).apiKey) || '';
     return send(res, 200, await lexoffice.testConnection(key));
   }
   if (pathname === '/api/t/lexoffice/push' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!requireWritable(ctx, res, cfg.PLANS)) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const key = (safeParse(dbm.getIntegration(ctx.tenant.id, 'lexoffice') || {}).apiKey) || '';
@@ -1476,6 +1719,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // E-Mail-Versand (Angebote/Rechnungen)
   if (pathname === '/api/t/mail/send' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!requireWritable(ctx, res, cfg.PLANS)) return null;
     if (!moduleAllowed(ctx.tenant, 'geld') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'geld' });
     if (!mail.isConfigured()) return send(res, 200, { ok: false, configured: false, hint: 'E-Mail-Versand nicht konfiguriert – Link teilen als Alternative.' });
@@ -1552,13 +1796,13 @@ async function handleIntegrations(req, res, pathname, m) {
   // ---- GAEB: LV einlesen / D84-Angebot exportieren ----
   if (pathname === '/api/t/gaeb/parse' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
-    if (!moduleAllowed(ctx.tenant, 'lv') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'lv' });
+    if (!moduleAllowed(ctx.tenant, 'auftraege') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'auftraege' });
     const buf = await readBody(req, cfg.MAX_FILE_BYTES);
     return send(res, 200, gaeb.parseGaeb(buf.toString('utf8')));
   }
   if (pathname === '/api/t/gaeb/export' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
-    if (!moduleAllowed(ctx.tenant, 'lv') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'lv' });
+    if (!moduleAllowed(ctx.tenant, 'auftraege') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'auftraege' });
     const b = await readJson(req, 4e6);
     const xml = gaeb.buildGaebD84(b.items || [], b.meta || {});
     return send(res, 200, xml, { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': 'attachment; filename="angebot-d84.X84"' });
@@ -1567,6 +1811,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // ---- SEPA: Überweisung / Lastschrift ----
   if (pathname === '/api/t/sepa/credit-transfer' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const b = await readJson(req, 2e6);
     const xml = sepa.buildCreditTransfer(b);
@@ -1575,6 +1820,7 @@ async function handleIntegrations(req, res, pathname, m) {
   }
   if (pathname === '/api/t/sepa/direct-debit' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const b = await readJson(req, 2e6);
     const xml = sepa.buildDirectDebit(b);
@@ -1585,6 +1831,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // ---- GoBD/GDPdU-Prüferexport (ZIP: index.xml + CSVs) ----
   if (pathname === '/api/t/gobd/export' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'buchhaltung' });
     const b = await readJson(req, 8e6);
     const files = gobd.buildGobdExport({ supplierName: ctx.tenant.name, range: b.range || {}, outgoing: b.outgoing || [], incoming: b.incoming || [] });
@@ -1596,6 +1843,7 @@ async function handleIntegrations(req, res, pathname, m) {
   // ---- Lohn-Export ----
   if (pathname === '/api/t/payroll/export' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
+    if (!requireRole(ctx, res, ['owner', 'office'])) return null;
     if (!moduleAllowed(ctx.tenant, 'zeiten') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'zeiten' });
     const b = await readJson(req, 4e6);
     const csv = b.format === 'datev' ? payroll.buildDatevLohn(b.entries || [], b.meta || {}) : payroll.buildPayrollCsv(b.entries || [], b.meta || {});
@@ -1606,7 +1854,7 @@ async function handleIntegrations(req, res, pathname, m) {
   if (pathname === '/api/t/ical/publish' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return null;
     if (!requireWritable(ctx, res, cfg.PLANS)) return null;
-    if (!moduleAllowed(ctx.tenant, 'calendar') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'calendar' });
+    if (!moduleAllowed(ctx.tenant, 'planung') && !accountingAllowed(ctx.tenant)) return err(res, 403, 'module-not-active', { module: 'planung' });
     const b = await readJson(req, 4e6);
     let rec = dbm.getIntegration(ctx.tenant.id, 'ical');
     let token = b.token;
