@@ -591,6 +591,12 @@
                 payMethod: panel.querySelector('#ckPay').value,
               },
             }).then(function (pr) {
+              if (pr.data && pr.data.checkoutUrl) {
+                // Stripe: zur gehosteten Zahlungsseite (Karte/SEPA) weiterleiten.
+                btn.textContent = '↪ Weiter zur Zahlung …';
+                window.location.href = pr.data.checkoutUrl;
+                return;
+              }
               if (pr.status === 201) {
                 var s2 = getSession(); s2.tenant = Object.assign({}, s2.tenant, pr.data.tenant); setSession(s2);
                 applyModules();
@@ -599,7 +605,7 @@
                 renderPanel();
               } else {
                 btn.disabled = false; btn.textContent = '✅ Kostenpflichtig abschließen — ' + p.priceEur + ' €/Monat';
-                var map = { 'address-required': 'Bitte Adresse vollständig angeben.', 'invalid-email': 'Bitte gültige Rechnungs-E-Mail angeben.', 'invalid-company': 'Bitte Firma angeben.', 'terms-required': 'Bitte Zustimmung bestätigen.' };
+                var map = { 'address-required': 'Bitte Adresse vollständig angeben.', 'invalid-email': 'Bitte gültige Rechnungs-E-Mail angeben.', 'invalid-company': 'Bitte Firma angeben.', 'terms-required': 'Bitte Zustimmung bestätigen.', 'stripe-error': (pr.data && pr.data.hint) || 'Zahlungsanbieter-Fehler.' };
                 errEl.textContent = map[pr.data.error] || ('Fehler: ' + (pr.data.error || pr.status));
               }
             });
@@ -692,16 +698,22 @@
     return authed('POST', '/billing/module-quote', { module: werkKey, employees: currentEmployees() })
       .then(function (r) { return r.status === 200 ? r.data : null; });
   }
-  // Self-Service-Kauf eines Moduls → sofort freigeschaltet, State aktualisiert.
+  // Self-Service-Kauf eines Moduls. Bei bestehendem Stripe-Abo sofort
+  // freigeschaltet (Proration); bei Erstzahlung Weiterleitung zur Stripe-
+  // Checkout-Seite (Freischaltung nach bestätigter Zahlung per Webhook).
   function buyModule(werkKey) {
     return authed('POST', '/billing/buy-module', { module: werkKey, acceptTerms: true, employees: currentEmployees() })
       .then(function (r) {
+        if (r.data && r.data.checkoutUrl) {
+          window.location.href = r.data.checkoutUrl;
+          return { ok: true, redirect: true };
+        }
         if (r.status === 201) {
           var s2 = getSession(); if (s2) { s2.tenant = Object.assign({}, s2.tenant, r.data.tenant); setSession(s2); }
           applyModules();
           return { ok: true, hint: r.data.hint, newMonthlyEur: r.data.newMonthlyEur, addEur: r.data.addEur };
         }
-        return { ok: false, error: (r.data && r.data.error) || r.status };
+        return { ok: false, error: (r.data && (r.data.hint || r.data.error)) || r.status };
       });
   }
   function pricing() { var s = getSession(); return (s && s.tenant && s.tenant.pricing) || (window.state && window.state.pricing) || null; }
@@ -748,6 +760,24 @@
     var s = getSession();
     if (inviteMatch && !s) { showGate(inviteMatch[1]); return; }
     if (!s) { showGate(null); return; }
+    // Rückkehr von der Stripe-Checkout-Seite auswerten.
+    var ck = (location.search.match(/[?&]checkout=([a-z]+)/) || [])[1];
+    if (ck) {
+      // URL-Parameter entfernen (kein erneutes Triggern beim Reload).
+      try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+      if (ck === 'success') {
+        // Webhook schaltet frei — Session ein paar Mal nachladen, bis es greift.
+        var tries = 0;
+        var poll = setInterval(function () {
+          tries++;
+          refreshSession().then(function () { applyModules(); if (typeof window.render === 'function') { try { window.render(); } catch (e) {} } });
+          if (tries >= 5) clearInterval(poll);
+        }, 2000);
+        toast('✅ Zahlung erhalten — deine Freischaltung wird aktiviert …');
+      } else if (ck === 'cancel') {
+        toast('Zahlung abgebrochen — es wurde nichts berechnet.');
+      }
+    }
     // Aktive Session: Token auffrischen, Konfiguration erzwingen, Widget zeigen
     refreshSession();
     applyServerConfig();
