@@ -3,11 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Preise — werkflow | Ein Preis pro Betrieb, ab 15 €/Monat</title>
-<meta name="description" content="werkflow Preise: START 15 €, BETRIEB 35 €, BETRIEB PLUS 59 € pro Monat — pauschal pro Betrieb, egal wie viele Mitarbeiter. 14 Tage kostenlos testen, monatlich kündbar.">
+<title>Preise — werkflow | Module wählen, Preis nach Mitarbeiterzahl, ab 19 €/Monat</title>
+<meta name="description" content="werkflow Preise: Module frei wählen, Preis nur nach Mitarbeiterzahl (bis 5 / 10 / 25). 1 Modul ab 19 €, Komplett-Paket ab 69 €/Monat. Auch der kleinste Betrieb kann alle Funktionen haben. 14 Tage kostenlos testen, monatlich kündbar.">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <meta name="theme-color" content="#12293f">
 <link rel="stylesheet" href="site.css">
+<style>
+  /* Preisrechner (Modul×MA) */
+  .calc { display:grid; grid-template-columns:1.3fr 1fr; gap:22px; align-items:start; }
+  @media (max-width:820px){ .calc{ grid-template-columns:1fr; } }
+  .calc-card { background:var(--card,#fff); border:1px solid var(--line,#e3e9ef); border-radius:14px; padding:20px 22px; }
+  .modpick { list-style:none; margin:0; padding:0; display:grid; gap:9px; }
+  .modpick li { margin:0; }
+  .modpick label { display:flex; align-items:flex-start; gap:11px; padding:11px 13px; border:1px solid var(--line,#e3e9ef); border-radius:10px; cursor:pointer; transition:border-color .12s, background .12s; }
+  .modpick label:hover { border-color:#9cc2e6; }
+  .modpick input:checked + .mtext { }
+  .modpick label.on { border-color:#1e8449; background:rgba(30,132,73,.06); }
+  .modpick .mtext b { display:block; font-size:14.5px; }
+  .modpick .mtext span { font-size:12px; color:var(--soft,#667); }
+  .staffel { display:flex; gap:8px; margin:6px 0 0; flex-wrap:wrap; }
+  .staffel button { flex:1; min-width:92px; padding:10px 8px; border:1px solid var(--line,#e3e9ef); border-radius:10px; background:#fff; cursor:pointer; font-weight:600; font-size:13px; color:var(--ink,#12293f); }
+  .staffel button.on { border-color:#16324e; background:#16324e; color:#fff; }
+  .calc-out { text-align:center; position:sticky; top:78px; }
+  .calc-price { font-size:46px; font-weight:800; line-height:1; color:#16324e; }
+  .calc-price small { font-size:15px; font-weight:600; color:var(--soft,#667); }
+  .calc-sub { font-size:13px; color:var(--soft,#667); margin-top:8px; }
+  .calc-year { margin-top:10px; font-size:13px; color:#1e8449; font-weight:600; }
+  .matrix { width:100%; border-collapse:collapse; font-size:14px; }
+  .matrix th, .matrix td { padding:9px 10px; border-bottom:1px solid var(--line,#eef2f6); text-align:right; }
+  .matrix th:first-child, .matrix td:first-child { text-align:left; }
+  .matrix thead th { color:var(--soft,#667); font-weight:600; }
+  .matrix tr.total td { font-weight:800; border-top:2px solid #16324e; }
+  .matrix td .eu::after { content:" €"; }
+  @media (prefers-color-scheme: dark){
+    .calc-price { color:#cfe3f5; }
+    .staffel button.on { background:#2a5080; border-color:#2a5080; }
+  }
+</style>
 </head>
 <body>
 
@@ -37,114 +69,94 @@
 <header class="page-head">
   <div class="wrap">
     <span class="kicker">Preise</span>
-    <h1>Ein Preis pro Betrieb. Niemals pro Nutzer.</h1>
-    <p>Ob 2 oder 15 Leute — dein Preis bleibt gleich. Keine Einrichtungsgebühr, keine Vertragslaufzeit,
-       monatlich kündbar. Alle Preise zzgl. gesetzlicher USt.</p>
+    <h1>Module wählen. Preis nach Mitarbeiterzahl.</h1>
+    <p>Kein Feature ist an die Betriebsgröße gekoppelt — <b>auch der kleinste Betrieb kann alle Funktionen haben</b>.
+       Der Preis richtet sich nur nach zwei Dingen: welche Module und wie viele Mitarbeiter. Mehr Module = günstigerer Paketpreis.
+       Keine Einrichtungsgebühr, keine Laufzeit, monatlich kündbar. Alle Preise zzgl. USt.</p>
   </div>
 </header>
 
 <section class="alt">
   <div class="wrap">
-    <div class="plans">
-      <div class="plan">
-        <h3>START</h3>
-        <div class="price"><b>15 €</b><span> / Monat</span></div>
-        <div class="per">pauschal pro Betrieb · bis 5 Mitarbeiter · 2 GB Speicher</div>
-        <ul>
-          <li>Zeiten &amp; Team komplett</li>
-          <li>Stempeln per Handy/QR ohne Accounts</li>
-          <li>Wochen- &amp; Monatsauswertungen</li>
-          <li class="no">Aufträge &amp; Baustelle</li>
-          <li class="no">Angebote &amp; Rechnungen</li>
-          <li class="no">Einsatzplanung</li>
-          <li class="no">Einkauf &amp; Lager</li>
-          <li>GoBD-Archiv, DSGVO-Export, Backups</li>
+    <div class="sec-head">
+      <span class="tag">Preisrechner</span>
+      <h2>Stell dir dein Paket zusammen</h2>
+    </div>
+    <div class="calc">
+      <div class="calc-card">
+        <div style="font-weight:700; margin-bottom:8px;">1 · Module wählen</div>
+        <ul class="modpick" id="modpick">
+          <li><label class="on"><input type="checkbox" value="planung" checked><span class="mtext"><b>📅 Planung</b><span>Terminplan &amp; Mitarbeitereinteilung</span></span></label></li>
+          <li><label class="on"><input type="checkbox" value="zeiten" checked><span class="mtext"><b>⏱ Zeit &amp; Team</b><span>Stundenerfassung, Mitarbeiter, Stundensätze</span></span></label></li>
+          <li><label class="on"><input type="checkbox" value="geld" checked><span class="mtext"><b>🧾 Angebote &amp; Rechnungen</b><span>Angebote, Kalkulation, Rechnungen, VOB-Abschlag, Mahnwesen, DATEV</span></span></label></li>
+          <li><label><input type="checkbox" value="auftraege"><span class="mtext"><b>📋 Aufträge &amp; Baustelle</b><span>Aufträge, Bautagebuch/Berichte, Mängel, LVs, Cockpit</span></span></label></li>
+          <li><label><input type="checkbox" value="einkauf"><span class="mtext"><b>🛒 Material &amp; Lager</b><span>Materialwesen, Lager, Bestellung, Inventur, Wareneingang per Foto</span></span></label></li>
         </ul>
-        <a class="btn navy" href="/#demo">Kostenlos testen</a>
+        <div style="font-weight:700; margin:18px 0 8px;">2 · Betriebsgröße</div>
+        <div class="staffel" id="staffel">
+          <button data-t="0" class="on">bis 5 MA</button>
+          <button data-t="1">bis 10 MA</button>
+          <button data-t="2">bis 25 MA</button>
+        </div>
+        <p style="font-size:12px; color:var(--soft,#667); margin-top:10px;">Über 25 Mitarbeiter? <a href="/#demo">Enterprise-Konditionen anfragen →</a></p>
       </div>
-      <div class="plan hot">
-        <span class="flag">⭐ Beliebtester Tarif</span>
-        <h3>BETRIEB</h3>
-        <div class="price"><b>35 €</b><span> / Monat</span></div>
-        <div class="per">pauschal pro Betrieb · bis 10 Mitarbeiter · 10 GB Speicher</div>
-        <ul>
-          <li>Alles aus START</li>
-          <li>Aufträge, Bautagebuch, Mängel, LVs</li>
-          <li>Controlling-Cockpit mit Auftrags-Ampel</li>
-          <li><b>Angebote mit Kunden-Unterschrift per Link</b></li>
-          <li>Rechnungen, Gutschriften, Mahnwesen</li>
-          <li class="no">Einsatzplanung</li>
-          <li class="no">Einkauf &amp; Lager</li>
-          <li>GoBD-Archiv, DSGVO-Export, Backups</li>
-        </ul>
-        <a class="btn primary" href="/#demo">Kostenlos testen</a>
-      </div>
-      <div class="plan">
-        <h3>BETRIEB PLUS</h3>
-        <div class="price"><b>59 €</b><span> / Monat</span></div>
-        <div class="per">pauschal pro Betrieb · bis 15 Mitarbeiter · 25 GB Speicher</div>
-        <ul>
-          <li>Alles aus BETRIEB</li>
-          <li>Einsatzplanung mit Plantafel</li>
-          <li>Einkauf &amp; Lager</li>
-          <li>Steuerberater-Zugang (lesend)</li>
-          <li>GoBD-Archiv, DSGVO-Export, Backups</li>
-        </ul>
-        <a class="btn navy" href="/#demo">Kostenlos testen</a>
+      <div class="calc-card calc-out">
+        <div class="calc-sub" id="calcCount">3 von 5 Modulen · bis 5 Mitarbeiter</div>
+        <div class="calc-price"><span id="calcPrice">49</span> €<small> / Monat</small></div>
+        <div class="calc-year" id="calcYear">490 € / Jahr (2 Monate geschenkt)</div>
+        <a class="btn primary big" href="/#demo" style="margin-top:16px;">🚀 14 Tage kostenlos testen</a>
+        <p style="font-size:11.5px; color:var(--soft,#667); margin-top:10px;">Netto pro Betrieb · unbegrenzte Nutzer im Rahmen der Staffel · immer inklusive: Hosting in Deutschland, GoBD-Archiv, DSGVO-Export, tägliche Backups.</p>
       </div>
     </div>
-    <p class="pricenote">Jeder Tarif beginnt mit <b>14 Tagen Testphase mit allen Modulen</b> — ohne Zahlungsdaten,
+
+    <div class="sec-head" style="margin-top:40px;">
+      <span class="tag">À la carte</span>
+      <h2>Die komplette Preismatrix</h2>
+      <p>Monatspreis netto pro Betrieb. Zeile = Anzahl Module, Spalte = Mitarbeiter-Staffel. Welche Module — frei wählbar.</p>
+    </div>
+    <div class="cmp-wrap">
+      <table class="matrix">
+        <thead><tr><th>Umfang</th><th>bis 5 MA</th><th>bis 10 MA</th><th>bis 25 MA</th></tr></thead>
+        <tbody>
+          <tr><td>1 Modul</td><td><span class="eu">19</span></td><td><span class="eu">29</span></td><td><span class="eu">49</span></td></tr>
+          <tr><td>2 Module</td><td><span class="eu">35</span></td><td><span class="eu">54</span></td><td><span class="eu">90</span></td></tr>
+          <tr><td>3 Module</td><td><span class="eu">49</span></td><td><span class="eu">75</span></td><td><span class="eu">125</span></td></tr>
+          <tr><td>4 Module</td><td><span class="eu">59</span></td><td><span class="eu">92</span></td><td><span class="eu">155</span></td></tr>
+          <tr class="total"><td>Alle 5 Module (Komplett)</td><td><span class="eu">69</span></td><td><span class="eu">109</span></td><td><span class="eu">179</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="pricenote" style="margin-top:16px;">Jeder Start beginnt mit <b>14 Tagen Testphase mit allen Modulen</b> — ohne Zahlungsdaten,
       endet automatisch und wird nie ungefragt kostenpflichtig.</p>
-    <p class="pricenote" style="margin-top:8px;">Du brauchst nur ein einzelnes Zusatzmodul? Wir schalten es dir auf Wunsch
-      <b>befristet zum Testen frei</b> — gefällt es, behältst du es als Add-on (z. B. Einkauf &amp; Lager +10 €/Monat,
-      Aufmaß &amp; Raumplan +12 €/Monat, Website-Baukasten +14 €/Monat oder Buchhaltung &amp; Schnittstellen
-      +19 €/Monat), sonst schaltet es sich nach der Testphase automatisch wieder ab. Sprich uns einfach an.</p>
+    <p class="pricenote" style="margin-top:8px;"><b>Jederzeit erweiterbar:</b> Ein Modul lässt sich mit einem Klick dazubuchen — der Preis springt
+      dann auf die nächste Paketstufe. Direkt in der App siehst du beim Klick auf ein gesperrtes Modul sofort
+      den Mehrpreis und den neuen Paketpreis. Alle Module laufen im Hintergrund immer mit; nach der Freischaltung
+      sind sie <b>sofort</b> nutzbar, ohne Datenverlust.</p>
   </div>
 </section>
 
 <section>
   <div class="wrap">
     <div class="sec-head">
-      <span class="tag">Leistungsvergleich</span>
-      <h2>Alle Leistungen im Überblick</h2>
+      <span class="tag">Die fünf Module</span>
+      <h2>Was in jedem Modul steckt</h2>
+      <p>Jedes Modul ist für <b>jede</b> Betriebsgröße verfügbar — auch der 1-Personen-Betrieb kann alle fünf haben.
+         Du zahlst nur nach Modulzahl und Mitarbeiter-Staffel.</p>
     </div>
     <div class="cmp-wrap">
       <table class="cmp">
         <thead>
-          <tr><th>Leistung</th><th>START<br><span style="font-weight:400;color:var(--soft);">15 €/M</span></th>
-              <th style="color:var(--green);">BETRIEB<br><span style="font-weight:400;color:var(--soft);">35 €/M</span></th>
-              <th>BETRIEB PLUS<br><span style="font-weight:400;color:var(--soft);">59 €/M</span></th></tr>
+          <tr><th>Modul</th><th>Was drin ist</th></tr>
         </thead>
         <tbody>
-          <tr class="grp"><td colspan="4">Rahmen</td></tr>
-          <tr><td>Mitarbeiter (ein Preis, egal wie viele)</td><td>bis 5</td><td>bis 10</td><td>bis 15</td></tr>
-          <tr><td>Speicher für Fotos &amp; Dokumente</td><td>2 GB</td><td>10 GB</td><td>25 GB</td></tr>
-          <tr><td>Geräte (Browser, Handy, Tablet, PWA)</td><td class="yes">✓ unbegrenzt</td><td class="yes">✓ unbegrenzt</td><td class="yes">✓ unbegrenzt</td></tr>
-          <tr class="grp"><td colspan="4">Zeiten &amp; Team</td></tr>
-          <tr><td>Stempeln per Handy/QR (ohne Mitarbeiter-Accounts)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Mitarbeiter, Rollen &amp; Berechtigungen</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Kolonnen/Teams</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Wochen-/Monatsauswertungen, Überstunden</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Ticket-System fürs Team</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr class="grp"><td colspan="4">Aufträge &amp; Baustelle</td></tr>
-          <tr><td>Projekte &amp; Auftragsakten</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Bautagebuch &amp; Berichte mit Fotos</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Mängelverwaltung mit Fristen</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Leistungsverzeichnisse</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Controlling-Cockpit + Auftrags-Ampel</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr class="grp"><td colspan="4">Angebote &amp; Rechnungen</td></tr>
-          <tr><td>Angebote mit Kalkulation &amp; PDF</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>📲 Kunden-Link mit digitaler Unterschrift</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Angebot → Projekt → Rechnung per Klick</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Rechnungen, Gutschriften, Mahnwesen</td><td class="no">–</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr class="grp"><td colspan="4">Planung &amp; Einkauf</td></tr>
-          <tr><td>Einsatzplanung (Plantafel, Urlaub, Team-Plan)</td><td class="no">–</td><td class="no">–</td><td class="yes">✓</td></tr>
-          <tr><td>Einkauf, Bestellungen, Eingangsrechnungen, Lager</td><td class="no">–</td><td class="no">–</td><td class="yes">✓</td></tr>
-          <tr class="grp"><td colspan="4">Sicherheit &amp; Recht (immer inklusive)</td></tr>
-          <tr><td>Hosting in Deutschland, tägliche Backups</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>GoBD: unveränderliche Revisionen + Audit-Trail</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>DSGVO-Komplett-Export per Klick</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>Steuerberater-Zugang (lesend)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td><b>📅 Planung</b></td><td>Terminplan &amp; Mitarbeitereinteilung, Plantafel per Drag&amp;Drop, Urlaube/Abwesenheiten</td></tr>
+          <tr><td><b>⏱ Zeit &amp; Team</b></td><td>Stempeln per Handy/QR ohne Accounts, Mitarbeiter, Rollen &amp; Stundensätze, Kolonnen/Teams, Wochen-/Monatsauswertungen, Tickets</td></tr>
+          <tr><td><b>🧾 Angebote &amp; Rechnungen</b></td><td>Angebote mit Kalkulation &amp; PDF, 📲 Kunden-Link mit digitaler Unterschrift, Rechnungen &amp; Gutschriften, VOB-Abschlagsrechnungen, Mahnwesen, DATEV-Weiterleitung</td></tr>
+          <tr><td><b>📋 Aufträge &amp; Baustelle</b></td><td>Projekte &amp; Auftragsakten, Bautagebuch/Berichte mit Fotos, Mängelverwaltung mit Fristen, Leistungsverzeichnisse, Controlling-Cockpit mit Auftrags-Ampel</td></tr>
+          <tr><td><b>🛒 Material &amp; Lager</b></td><td>Lieferanten, Materiallisten, Bestellungen, Wareneingang per Foto, Lagerhaltung, Inventur, Verbrauchsanalyse</td></tr>
+          <tr class="grp"><td colspan="2">Bei jedem Modul immer inklusive — ohne Aufpreis</td></tr>
+          <tr><td>Rahmen</td><td>Unbegrenzte Nutzer im Rahmen der Staffel · Browser, Handy, Tablet &amp; PWA</td></tr>
+          <tr><td>Sicherheit &amp; Recht</td><td>Hosting in Deutschland, tägliche Backups · GoBD: unveränderliche Revisionen + Audit-Trail · DSGVO-Komplett-Export per Klick · Steuerberater-Zugang (lesend)</td></tr>
         </tbody>
       </table>
     </div>
@@ -159,13 +171,13 @@
     </div>
     <div class="faq">
       <details><summary>Wie funktioniert die Testphase?</summary>
-        <p>Nach der Registrierung hast du 14 Tage lang <b>alle Module</b> — ohne Zahlungsdaten. Die Testphase endet automatisch: Danach kannst du weiterhin alles lesen und exportieren, aber erst nach Tarifwahl wieder schreiben. Es entsteht nie ungefragt eine Zahlung.</p></details>
+        <p>Nach der Registrierung hast du 14 Tage lang <b>alle Module</b> — ohne Zahlungsdaten. Die Testphase endet automatisch: Danach kannst du weiterhin alles lesen und exportieren, aber erst nach der Modulwahl wieder schreiben. Es entsteht nie ungefragt eine Zahlung.</p></details>
       <details><summary>Wie wird bezahlt?</summary>
-        <p>Bequem auf Rechnung mit 14 Tagen Zahlungsziel oder per SEPA-Lastschrift. Den Tarif schließt du direkt in der App ab — mit deinen Rechnungsdaten und verbindlicher Bestätigung, ganz ohne Papierkram.</p></details>
-      <details><summary>Kann ich den Tarif wechseln?</summary>
-        <p>Jederzeit. Ein Upgrade schaltet die zusätzlichen Module sofort frei; deine Daten bleiben unverändert. Beim Downgrade werden Module ausgeblendet, aber keine Daten gelöscht — schaltest du wieder hoch, ist alles noch da.</p></details>
-      <details><summary>Was passiert bei mehr Mitarbeitern als im Tarif?</summary>
-        <p>Dann passt der nächstgrößere Tarif. Wichtig: Es gibt keine Preisberechnung pro Kopf — auch im größten Tarif zahlst du pauschal pro Betrieb.</p></details>
+        <p>Bequem auf Rechnung mit 14 Tagen Zahlungsziel oder per SEPA-Lastschrift. Deine Module schaltest du direkt in der App frei — mit deinen Rechnungsdaten und verbindlicher Bestätigung, ganz ohne Papierkram.</p></details>
+      <details><summary>Kann ich später ein Modul dazubuchen oder abwählen?</summary>
+        <p>Jederzeit — mit einem Klick. Beim Klick auf ein gesperrtes Modul zeigt dir die App sofort den <b>Mehrpreis</b> und den <b>neuen Paketpreis</b>. Nach der Freischaltung ist das Modul sofort nutzbar; alle Module laufen ohnehin im Hintergrund immer mit, es geht kein Datum verloren. Wählst du ein Modul wieder ab, wird es nur ausgeblendet — deine Daten bleiben erhalten.</p></details>
+      <details><summary>Wie wird der Preis berechnet?</summary>
+        <p>Ausschließlich nach zwei Dingen: <b>wie viele Module</b> du wählst und <b>wie viele Mitarbeiter</b> du hast (Staffel bis 5 / 10 / 25). Kein Feature ist an die Betriebsgröße gekoppelt — auch der kleinste Betrieb kann alle fünf Module haben. Es gibt keine Berechnung pro Kopf: Innerhalb einer Staffel ist die Nutzerzahl unbegrenzt.</p></details>
       <details><summary>Wie kündige ich — und was passiert mit meinen Daten?</summary>
         <p>Monatlich kündbar, direkt in der App, ohne Frist-Tricks. Nach der Kündigung behältst du Lesezugriff und kannst deine kompletten Daten jederzeit als ZIP exportieren. Auf Wunsch löschen wir alles endgültig (30 Tage Karenz, dann unwiderruflich).</p></details>
       <details><summary>Gibt es Rabatte oder individuelle Angebote?</summary>
@@ -218,6 +230,38 @@
   </div>
 </footer>
 
+<script>
+// Preisrechner (Modul×MA) — Matrix muss zur Server-Config (config.MODULE_PRICING) passen.
+(function () {
+  var P = [[19,29,49],[35,54,90],[49,75,125],[59,92,155],[69,109,179]];
+  var TIER = ['bis 5 Mitarbeiter','bis 10 Mitarbeiter','bis 25 Mitarbeiter'];
+  var tier = 0;
+  var pick = document.getElementById('modpick');
+  var staffel = document.getElementById('staffel');
+  if (!pick || !staffel) return;
+  function boxes(){ return Array.prototype.slice.call(pick.querySelectorAll('input[type=checkbox]')); }
+  function update(){
+    var checked = boxes().filter(function(b){ return b.checked; });
+    var n = checked.length;
+    boxes().forEach(function(b){ b.closest('label').classList.toggle('on', b.checked); });
+    var price = n ? P[n-1][tier] : 0;
+    document.getElementById('calcPrice').textContent = price;
+    document.getElementById('calcCount').textContent = n + ' von 5 Modulen · ' + TIER[tier];
+    var yr = document.getElementById('calcYear');
+    yr.textContent = n ? (price*10) + ' € / Jahr (2 Monate geschenkt)' : 'Mindestens 1 Modul wählen';
+    yr.style.visibility = n ? 'visible' : 'hidden';
+  }
+  pick.addEventListener('change', update);
+  staffel.querySelectorAll('button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      tier = Number(btn.dataset.t) || 0;
+      staffel.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b===btn); });
+      update();
+    });
+  });
+  update();
+})();
+</script>
 <script src="site.js"></script>
 </body>
 </html>

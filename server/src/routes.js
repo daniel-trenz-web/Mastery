@@ -100,6 +100,50 @@ function moduleStates(tenant) {
   return states;
 }
 
+// --- Modul×Mitarbeiter-Preismodell -----------------------------------------
+// Preis = f(Anzahl verkaufbarer, freigeschalteter Module, Mitarbeiter-Staffel).
+// Die Mitarbeiterzahl kommt aus den Tenant-Settings (vom Client gepflegt),
+// Standard 1 (kleinster Betrieb → günstigste Staffel).
+function tenantEmployees(tenant) {
+  const n = Number((dbm.getTenantSettings(tenant.id) || {}).employeeCount);
+  return n >= 1 ? Math.floor(n) : 1;
+}
+// Aktuell freigeschaltete, verkaufbare Module (Schnittmenge mit SELLABLE_MODULES).
+function sellableActive(tenant) {
+  const eff = new Set(effectiveModules(tenant));
+  return cfg.SELLABLE_MODULES.filter((k) => eff.has(k));
+}
+// Vollständiges Preisbild eines Mandanten + Upsell-Preis je noch nicht
+// gebuchtem Modul (Mehrpreis + neuer Paketpreis), damit die App den Preis
+// beim Klick auf ein gesperrtes Modul sofort ohne Rückfrage anzeigen kann.
+function pricingInfo(tenant) {
+  const employees = tenantEmployees(tenant);
+  const tierIdx = cfg.employeeTierIndex(employees);
+  const active = sellableActive(tenant);
+  const count = active.length;
+  const monthlyEur = cfg.modulePrice(count, employees);
+  const upsell = {};
+  for (const k of cfg.SELLABLE_MODULES) {
+    if (active.includes(k)) continue;
+    const next = cfg.modulePrice(count + 1, employees);
+    upsell[k] = {
+      addEur: next - monthlyEur,   // Mehrpreis für DIESES Modul
+      newTotalEur: next,           // neuer Paketpreis danach
+      newCount: count + 1,
+    };
+  }
+  return {
+    employees,
+    tier: cfg.EMPLOYEE_TIERS[tierIdx].short,
+    tierLabel: cfg.EMPLOYEE_TIERS[tierIdx].label,
+    activeModules: active,
+    moduleCount: count,
+    monthlyEur,
+    maxModules: cfg.SELLABLE_MODULES.length,
+    upsell,
+  };
+}
+
 // Aufbereitete Grant-Infos für die Anzeige (Trial-Countdown, Kauf-CTA)
 function grantInfo(tenant) {
   const planModules = (cfg.PLANS[tenant.plan] || {}).modules || [];
@@ -126,6 +170,8 @@ function accountInfo(tenant) {
     moduleStates: moduleStates(tenant),
     moduleCatalog: cfg.MODULES,
     grants: grantInfo(tenant),
+    pricing: pricingInfo(tenant),
+    sellableModules: cfg.SELLABLE_MODULES,
     priceEur: plan ? plan.priceEur : null,
     trialEndsAt: tenant.trial_ends_at,
     trialExpired: tenant.plan === 'TRIAL' && trialEnds > 0 && trialEnds < Date.now(),
@@ -384,6 +430,30 @@ async function handleApi(req, res, pathname) {
 
   // Add-on-Modul KAUFEN: aus einem laufenden Trial (oder direkt) wird ein
   // dauerhafter Grant. Nur sinnvoll für Module, die NICHT schon im Tarif sind.
+  // Preis-Auskunft für Self-Service-Upsell: Was kostet es, EIN Modul dazuzubuchen?
+  // Body: { module, employees? }. Aktualisiert optional die Mitarbeiterzahl
+  // (Staffel) und liefert Mehrpreis + neuen Paketpreis — ohne etwas zu kaufen.
+  if (pathname === '/api/billing/module-quote' && m === 'POST') {
+    const ctx = requireAuth(req, res); if (!ctx) return;
+    const b = await readJson(req, 16e3);
+    if (b.employees != null && Number(b.employees) >= 1) {
+      dbm.setTenantSetting(ctx.tenant.id, 'employeeCount', Math.floor(Number(b.employees)));
+    }
+    const tenant = dbm.getTenant(ctx.tenant.id);
+    const key = String(b.module || '');
+    const mod = cfg.MODULES[key];
+    if (!mod) return err(res, 400, 'invalid-module');
+    const pr = pricingInfo(tenant);
+    const owned = pr.activeModules.includes(key);
+    const up = pr.upsell[key] || { addEur: 0, newTotalEur: pr.monthlyEur, newCount: pr.moduleCount };
+    return send(res, 200, {
+      module: key, label: mod.label, sellable: cfg.SELLABLE_MODULES.includes(key),
+      owned, employees: pr.employees, tier: pr.tier, tierLabel: pr.tierLabel,
+      currentCount: pr.moduleCount, currentMonthlyEur: pr.monthlyEur,
+      addEur: up.addEur, newCount: up.newCount, newMonthlyEur: up.newTotalEur,
+    });
+  }
+
   if (pathname === '/api/billing/buy-module' && m === 'POST') {
     const ctx = requireAuth(req, res); if (!ctx) return;
     if (!requireRole(ctx, res, ['owner'])) return;
@@ -394,9 +464,22 @@ async function handleApi(req, res, pathname) {
     if (!mod) return err(res, 400, 'invalid-module');
     if ((cfg.PLANS[ctx.tenant.plan] || {}).modules.includes(key)) return err(res, 409, 'already-in-plan');
     if (b.acceptTerms !== true) return err(res, 400, 'terms-required');
-    dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: key, status: 'active', priceEur: mod.addonPriceEur, createdBy: ctx.user.id, note: 'gekauft' });
-    dbm.audit(ctx.tenant.id, ctx.user.id, 'module.purchased', { module: key, priceEur: mod.addonPriceEur, termsAccepted: true });
-    return send(res, 201, { ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), hint: mod.label + ' dauerhaft freigeschaltet (+' + mod.addonPriceEur + ' €/Monat, auf Rechnung).' });
+    // Mitarbeiterzahl (Staffel) ggf. aktualisieren, bevor der Paketpreis fixiert wird.
+    if (b.employees != null && Number(b.employees) >= 1) {
+      dbm.setTenantSetting(ctx.tenant.id, 'employeeCount', Math.floor(Number(b.employees)));
+    }
+    const before = pricingInfo(dbm.getTenant(ctx.tenant.id));
+    // Verkaufbare Module: Paketpreis (Mehrpreis + neuer Gesamtpreis). Legacy-Module: Einzel-Add-on.
+    const sellable = cfg.SELLABLE_MODULES.includes(key);
+    const up = before.upsell[key];
+    const addEur = sellable && up ? up.addEur : (mod.addonPriceEur || 0);
+    dbm.grantModule({ tenantId: ctx.tenant.id, moduleKey: key, status: 'active', priceEur: addEur, createdBy: ctx.user.id, note: 'gekauft' });
+    const after = pricingInfo(dbm.getTenant(ctx.tenant.id));
+    dbm.audit(ctx.tenant.id, ctx.user.id, 'module.purchased', { module: key, addEur, newMonthlyEur: after.monthlyEur, moduleCount: after.moduleCount, termsAccepted: true });
+    const hint = sellable
+      ? mod.label + ' freigeschaltet — neuer Paketpreis ' + after.monthlyEur + ' €/Monat (' + after.moduleCount + ' Module, ' + after.tierLabel + ', auf Rechnung).'
+      : mod.label + ' dauerhaft freigeschaltet (+' + addEur + ' €/Monat, auf Rechnung).';
+    return send(res, 201, { ok: true, tenant: accountInfo(dbm.getTenant(ctx.tenant.id)), addEur, newMonthlyEur: after.monthlyEur, hint });
   }
 
   // Stripe-Webhook-Andockpunkt (Signaturprüfung folgt mit echten Stripe-Keys)

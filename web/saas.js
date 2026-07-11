@@ -76,14 +76,18 @@
     var states = s.tenant.moduleStates || {};       // {werkKey: 'on'|'locked'|'off'}
     var mods = window.state.modules || (window.state.modules = {});
     var vis = window.state.moduleStates || (window.state.moduleStates = {}); // appKey -> Tri-State
+    var werk = (window.state.moduleWerk = {});      // appKey -> werkKey (für Upsell-Preis)
     Object.keys(s.tenant.moduleCatalog).forEach(function (wk) {
       var st = states[wk] || (allowed.indexOf(wk) >= 0 ? 'on' : 'locked');
       var on = st === 'on';
       (s.tenant.moduleCatalog[wk].appModules || []).forEach(function (appKey) {
         mods[appKey] = on;          // nutzbar?
         vis[appKey] = st;           // sichtbar/gesperrt/aus
+        werk[appKey] = wk;          // welches verkaufbare Modul steckt dahinter
       });
     });
+    // Preisbild (Modul×MA) für den Self-Service-Upsell verfügbar machen.
+    window.state.pricing = s.tenant.pricing || null;
   }
 
   function refreshSession() {
@@ -675,6 +679,33 @@
   // --------------------------------------------------------------------------
   // Boot
   // --------------------------------------------------------------------------
+  // Aktuelle Mitarbeiterzahl (für die Preis-Staffel) aus dem App-State ableiten.
+  function currentEmployees() {
+    try {
+      var emps = (window.state && window.state.employees) || [];
+      var active = emps.filter(function (e) { return e && !e.archived && !e.deleted; });
+      return Math.max(1, active.length || emps.length || 1);
+    } catch (e) { return 1; }
+  }
+  // Preis-Auskunft: was kostet es, ein (verkaufbares) Modul dazuzubuchen?
+  function moduleQuote(werkKey) {
+    return authed('POST', '/billing/module-quote', { module: werkKey, employees: currentEmployees() })
+      .then(function (r) { return r.status === 200 ? r.data : null; });
+  }
+  // Self-Service-Kauf eines Moduls → sofort freigeschaltet, State aktualisiert.
+  function buyModule(werkKey) {
+    return authed('POST', '/billing/buy-module', { module: werkKey, acceptTerms: true, employees: currentEmployees() })
+      .then(function (r) {
+        if (r.status === 201) {
+          var s2 = getSession(); if (s2) { s2.tenant = Object.assign({}, s2.tenant, r.data.tenant); setSession(s2); }
+          applyModules();
+          return { ok: true, hint: r.data.hint, newMonthlyEur: r.data.newMonthlyEur, addEur: r.data.addEur };
+        }
+        return { ok: false, error: (r.data && r.data.error) || r.status };
+      });
+  }
+  function pricing() { var s = getSession(); return (s && s.tenant && s.tenant.pricing) || (window.state && window.state.pricing) || null; }
+
   window.WERKOS = {
     applyServerConfig: applyServerConfig,
     applyModules: applyModules,
@@ -682,6 +713,10 @@
     syncOfferResponses: syncOfferResponses,
     session: getSession,
     refresh: refreshSession,
+    moduleQuote: moduleQuote,
+    buyModule: buyModule,
+    pricing: pricing,
+    currentEmployees: currentEmployees,
     logout: logout
   };
 
