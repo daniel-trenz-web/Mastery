@@ -352,14 +352,17 @@
       '<label>E-Mail</label><input id="wgEmail" type="email" autocomplete="username" placeholder="chef@betrieb.de">' +
       '<label>Passwort</label><input id="wgPass" type="password" autocomplete="current-password">' +
       '<button class="wg-btn" id="wgDoLogin">Anmelden</button>' +
+      '<div style="text-align:center;margin-top:10px;"><a href="#" id="wgMagic" style="font-size:12.5px;color:#2a5080;">Ohne Passwort: Login-Link per E-Mail →</a></div>' +
       '</div>' +
       '<div id="wgReg"' + (buy ? '' : ' style="display:none"') + '>' +
       '<label>Firmenname</label><input id="wgCompany" placeholder="z. B. Malerbetrieb Muster GmbH">' +
       '<label>Dein Name</label><input id="wgRName" autocomplete="name" placeholder="Vor- und Nachname">' +
       '<label>E-Mail</label><input id="wgREmail" type="email" autocomplete="username" placeholder="chef@betrieb.de">' +
       '<label>Passwort (mind. 10 Zeichen)</label><input id="wgRPass" type="password" autocomplete="new-password">' +
-      '<button class="wg-btn" id="wgDoReg">' + (buy ? 'Konto anlegen &amp; buchen' : '14 Tage kostenlos testen') + '</button>' +
-      '<div class="wg-trial">✓ Alle Module 14 Tage testen · ✓ ohne Zahlungsdaten · danach ab 14 €/Monat</div>' +
+      '<button class="wg-btn" id="wgDoReg">' + (buy ? 'Konto anlegen &amp; weiter zur Auswahl' : '14 Tage kostenlos testen') + '</button>' +
+      '<div class="wg-trial">' + (buy
+        ? '✓ Module wählen · ✓ per Karte/SEPA zahlen · ✓ monatlich kündbar'
+        : '✓ Alle Module 14 Tage testen · ✓ ohne Zahlungsdaten · danach ab 14 €/Monat') + '</div>' +
       '</div>' +
       '<div class="wg-err" id="wgErr"></div>' +
       '<div class="wg-foot">🇩🇪 Daten ausschließlich in Deutschland · DSGVO- &amp; GoBD-konform · Export jederzeit</div></div>';
@@ -410,6 +413,18 @@
         req('POST', '/auth/login', { email: el.querySelector('#wgEmail').value, password: el.querySelector('#wgPass').value }).then(done);
       };
       el.querySelector('#wgPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') el.querySelector('#wgDoLogin').click(); });
+      var magic = el.querySelector('#wgMagic');
+      if (magic) magic.onclick = function (e) {
+        e.preventDefault();
+        var email = (el.querySelector('#wgEmail').value || '').trim();
+        if (!email) { errBox.textContent = 'Bitte oben deine E-Mail eintragen, dann Link anfordern.'; return; }
+        req('POST', '/auth/request-login-link', { email: email }).then(function (r) {
+          errBox.style.color = '#1e8449';
+          errBox.textContent = (r.data && r.data.mailed === false)
+            ? 'E-Mail-Versand ist auf diesem Server nicht aktiv — bitte mit Passwort anmelden.'
+            : 'Falls ein Konto existiert, ist ein Login-Link unterwegs. Schau in dein Postfach.';
+        });
+      };
       el.querySelector('#wgDoReg').onclick = function () {
         req('POST', '/auth/register', {
           company: el.querySelector('#wgCompany').value,
@@ -553,23 +568,25 @@
         // KAUF: Tarifkarte → Checkout mit Rechnungsdaten + AGB/AVV-Zustimmung
         function showCheckout(planKey) {
           var p = a.plans[planKey];
-          var billing = (a.user.email || '');
+          // Rechnungsdaten aus den Firmendaten vorbefüllen (KI/Onboarding hat sie schon).
+          var bl = (window.state && window.state.betriebsleiter) || {};
+          var billing = (bl.email || bl.contactEmail || a.user.email || '');
           panel.innerHTML = '<h3>🛒 ' + esc(p.label) + ' abschließen</h3>' +
             '<div class="wa-row">' + p.priceEur + ' €/Monat pauschal zzgl. USt · monatlich kündbar · Module sofort frei</div>' +
             '<div class="wa-sec"><b>Rechnungsdaten</b>' +
             '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Firma *</label>' +
-            '<input id="ckCompany" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(t.name) + '">' +
+            '<input id="ckCompany" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(bl.name || t.name) + '">' +
             '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Straße &amp; Nr. *</label>' +
-            '<input id="ckAddress" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;">' +
+            '<input id="ckAddress" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(bl.addrLine1 || bl.street || '') + '">' +
             '<div style="display:flex;gap:8px;">' +
             '<div style="flex:1;"><label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">PLZ *</label>' +
-            '<input id="ckZip" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;"></div>' +
+            '<input id="ckZip" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(bl.plz || bl.zip || '') + '"></div>' +
             '<div style="flex:2;"><label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Ort *</label>' +
-            '<input id="ckCity" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;"></div></div>' +
+            '<input id="ckCity" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(bl.ort || bl.city || '') + '"></div></div>' +
             '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Rechnungs-E-Mail *</label>' +
             '<input id="ckEmail" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" value="' + esc(billing) + '">' +
             '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">USt-IdNr. (optional)</label>' +
-            '<input id="ckUst" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" placeholder="DE…">' +
+            '<input id="ckUst" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;" placeholder="DE…" value="' + esc(bl.ustId || '') + '">' +
             '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Zahlweise</label>' +
             '<select id="ckPay" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;">' +
             '<option value="invoice">Kauf auf Rechnung (14 Tage Ziel)</option>' +
@@ -759,14 +776,140 @@
     }, 300);
   }
 
+  // Nach Rückkehr von Stripe: sichtbarer Status, der auf die Webhook-Freischaltung
+  // wartet (kein blindes Polling) und bei Verzögerung ehrlich informiert.
+  function paymentStatusBanner() {
+    var el = document.createElement('div');
+    el.id = 'werkosPayStatus';
+    el.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:2147483600;background:#16324e;color:#fff;padding:13px 18px;border-radius:12px;font-size:13.5px;box-shadow:0 10px 34px rgba(0,0,0,.35);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:92vw;text-align:center;';
+    el.innerHTML = '<span class="ico">⏳</span> <span class="txt">Zahlung erhalten — deine Freischaltung wird aktiviert …</span>';
+    document.body.appendChild(el);
+    var before = JSON.stringify(((getSession() || {}).tenant || {}).modules || []);
+    var tries = 0;
+    var poll = setInterval(function () {
+      tries++;
+      refreshSession().then(function () {
+        applyModules();
+        if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
+        var now = JSON.stringify(((getSession() || {}).tenant || {}).modules || []);
+        var sub = (getSession() || {}).tenant && (getSession()).tenant.subscription;
+        if (now !== before || sub) {
+          clearInterval(poll);
+          el.querySelector('.ico').textContent = '✅';
+          el.querySelector('.txt').textContent = 'Zahlung bestätigt — freigeschaltet. Viel Erfolg!';
+          setTimeout(function () { el.remove(); }, 4000);
+        } else if (tries >= 8) {
+          clearInterval(poll);
+          el.style.background = '#8a6d1a';
+          el.querySelector('.ico').textContent = 'ℹ️';
+          el.querySelector('.txt').innerHTML = 'Zahlung läuft — die Freischaltung kann ein paar Minuten dauern. Die Seite aktualisiert sich automatisch; falls nicht, lade sie neu. Bei Fragen: <a href="mailto:kontakt@werkflow.example.de" style="color:#fff;text-decoration:underline;">Support</a>.';
+          setTimeout(function () { el.remove(); }, 12000);
+        }
+      });
+    }, 2500);
+  }
+
+  // Modul-Checkout: übernimmt die Auswahl aus dem Preisrechner, zeigt Modul×MA-
+  // Preis + Ersparnis, Rechnungsdaten (vorbefüllt) und schließt per Karte/SEPA ab.
+  var _MB = { planung: 14, einkauf: 18, zeiten: 20, auftraege: 23, geld: 28 };
+  var _MULT = [1.0, 1.58, 2.6];
+  var _DISC = [0, 0, 0.10, 0.18, 0.25, 0.33];
+  var _MNAME = { planung: '📅 Planung', einkauf: '🛒 Material & Lager', zeiten: '⏱ Zeit & Team', auftraege: '📋 Aufträge & Baustelle', geld: '🧾 Angebote & Rechnungen' };
+  var _TIERLBL = ['bis 5 Mitarbeiter', 'bis 10 Mitarbeiter', 'bis 25 Mitarbeiter'];
+  function _modUnit(k, tier) { return Math.round(_MB[k] * _MULT[tier]); }
+  function _modPrice(mods, tier) { var s = mods.reduce(function (a, k) { return a + _modUnit(k, tier); }, 0); return Math.round(s * (1 - (_DISC[Math.min(mods.length, 5)] || 0))); }
+  function openModuleCheckout(mods, tier) {
+    mods = (mods || []).filter(function (k) { return _MB[k]; }); tier = Number(tier) || 0;
+    if (!mods.length) mods = ['planung', 'zeiten', 'geld'];
+    var bl = (window.state && window.state.betriebsleiter) || {};
+    var listSum = mods.reduce(function (a, k) { return a + _modUnit(k, tier); }, 0);
+    var price = _modPrice(mods, tier), save = listSum - price, disc = Math.round((_DISC[Math.min(mods.length, 5)] || 0) * 100);
+    var ov = document.createElement('div');
+    ov.id = 'modCheckoutOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483500;background:rgba(12,25,40,.6);display:flex;align-items:flex-start;justify-content:center;padding:18px;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+    function fld(id, label, val, ph) { return '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">' + label + '</label><input id="' + id + '" value="' + esc(val || '') + '" placeholder="' + (ph || '') + '" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;">'; }
+    ov.innerHTML =
+      '<div style="max-width:560px;width:100%;background:#fff;border-radius:16px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.4);margin:3vh 0;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;font-size:20px;">🛒 Deine Auswahl abschließen</h2>' +
+      '<button class="wa-x" style="background:#eef1f5;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">✕</button></div>' +
+      '<div style="background:#f7fafc;border:1px solid #e3e9ef;border-radius:12px;padding:14px;margin:14px 0;">' +
+        mods.map(function (k) { return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span>' + _MNAME[k] + '</span><span style="color:#889;">' + _modUnit(k, tier) + ' €</span></div>'; }).join('') +
+        '<div style="border-top:1px solid #e3e9ef;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:baseline;">' +
+          '<span style="font-size:12.5px;color:#667;">' + mods.length + ' Module · ' + _TIERLBL[tier] + (disc ? ' · <b style="color:#1e8449;">−' + disc + ' %</b>' : '') + '</span>' +
+          '<span style="font-size:24px;font-weight:800;color:#16324e;">' + price + ' €<span style="font-size:12px;font-weight:600;color:#889;">/Monat</span></span>' +
+        '</div>' + (save > 0 ? '<div style="font-size:11.5px;color:#1e8449;text-align:right;">Du sparst ' + save + ' €/Monat</div>' : '') +
+      '</div>' +
+      '<b style="font-size:13px;">Rechnungsdaten</b>' +
+      fld('mcCompany', 'Firma *', bl.name || (getSession() && getSession().tenant.name) || '') +
+      fld('mcAddress', 'Straße &amp; Nr. *', bl.addrLine1 || bl.street || '') +
+      '<div style="display:flex;gap:8px;"><div style="flex:1;">' + fld('mcZip', 'PLZ *', bl.plz || bl.zip || '') + '</div><div style="flex:2;">' + fld('mcCity', 'Ort *', bl.ort || bl.city || '') + '</div></div>' +
+      fld('mcEmail', 'Rechnungs-E-Mail *', bl.email || bl.contactEmail || (getSession() && getSession().user.email) || '') +
+      fld('mcUst', 'USt-IdNr. (optional)', bl.ustId || '', 'DE…') +
+      '<label style="display:block;font-size:11px;font-weight:700;color:#456;margin:8px 0 3px;">Zahlweise</label>' +
+      '<select id="mcPay" style="width:100%;padding:9px;border:1px solid #cdd6df;border-radius:8px;font-size:14px;"><option value="invoice">Kauf auf Rechnung (14 Tage Ziel)</option><option value="sepa">SEPA-Lastschrift (Mandat folgt)</option></select>' +
+      '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:11.5px;color:#5b6b7c;line-height:1.5;"><input type="checkbox" id="mcTerms" style="width:16px;height:16px;margin-top:2px;flex:none;"><span>Ich schließe das Abo verbindlich ab (monatlich kündbar) und stimme dem AV-Vertrag zu. *</span></label>' +
+      '<button class="wg-btn" id="mcGo" style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:10px;background:#17924e;color:#fff;font-size:15px;font-weight:700;cursor:pointer;">✅ Kostenpflichtig abschließen — ' + price + ' €/Monat</button>' +
+      '<div id="mcErr" style="color:#c0392b;font-size:12.5px;margin-top:8px;min-height:16px;font-weight:600;"></div>' +
+      '<div style="text-align:center;margin-top:8px;"><a href="#" id="mcTrial" style="font-size:12px;color:#667;">Lieber erst 14 Tage kostenlos testen →</a></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    ov.querySelector('.wa-x').onclick = function () { ov.remove(); };
+    ov.querySelector('#mcTrial').onclick = function (e) { e.preventDefault(); ov.remove(); toast('Alles klar — du testest 14 Tage kostenlos. Kaufen kannst du jederzeit im Konto.'); };
+    ov.querySelector('#mcGo').onclick = function () {
+      var errEl = ov.querySelector('#mcErr');
+      if (!ov.querySelector('#mcTerms').checked) { errEl.textContent = 'Bitte die Abo-/AV-Zustimmung bestätigen.'; return; }
+      var btn = this; btn.disabled = true; btn.textContent = '⏳ Abschluss läuft …';
+      var employees = [3, 8, 18][tier];
+      authed('POST', '/billing/checkout-modules', {
+        modules: mods, employees: employees, acceptTerms: true,
+        billing: {
+          company: ov.querySelector('#mcCompany').value, address: ov.querySelector('#mcAddress').value,
+          zip: ov.querySelector('#mcZip').value, city: ov.querySelector('#mcCity').value,
+          email: ov.querySelector('#mcEmail').value, ustId: ov.querySelector('#mcUst').value,
+          payMethod: ov.querySelector('#mcPay').value
+        }
+      }).then(function (r) {
+        if (r.data && r.data.checkoutUrl) { btn.textContent = '↪ Weiter zur Zahlung …'; window.location.href = r.data.checkoutUrl; return; }
+        if (r.status === 201) {
+          var s2 = getSession(); if (s2) { s2.tenant = Object.assign({}, s2.tenant, r.data.tenant); setSession(s2); }
+          applyModules(); if (typeof window.render === 'function') { try { window.render(); } catch (e) {} }
+          ov.remove(); toast('🎉 ' + (r.data.hint || 'Abo aktiv — Module freigeschaltet.'));
+        } else {
+          btn.disabled = false; btn.textContent = '✅ Kostenpflichtig abschließen — ' + price + ' €/Monat';
+          var map = { 'address-required': 'Bitte Adresse vollständig angeben.', 'invalid-email': 'Bitte gültige Rechnungs-E-Mail.', 'invalid-company': 'Bitte Firma angeben.', 'terms-required': 'Bitte Zustimmung bestätigen.', 'no-modules': 'Bitte mindestens ein Modul wählen.', 'stripe-error': (r.data && r.data.hint) || 'Zahlungsanbieter-Fehler.' };
+          errEl.textContent = map[r.data && r.data.error] || ('Fehler: ' + ((r.data && r.data.error) || r.status));
+        }
+      });
+    };
+  }
+  window.WERKOS_openModuleCheckout = openModuleCheckout;
+
   function boot() {
     if (STATIC) { bootStatic(); return; }
     injectCss();
+    // Passwortloser Login-Link (#login=<token>) → Session, dann sauber neu laden.
+    var loginMatch = location.hash.match(/[#&]login=([A-Za-z0-9_-]+)/);
+    if (loginMatch) {
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      req('POST', '/auth/login-magic', { token: loginMatch[1] }).then(function (r) {
+        if (r.status === 200) { setSession(r.data); location.reload(); }
+        else { showGate(null, {}); toast('Login-Link ungültig oder abgelaufen — bitte neu anfordern.'); }
+      });
+      return;
+    }
     var inviteMatch = location.hash.match(/[#&]invite=([A-Za-z0-9_-]+)/);
     var s = getSession();
-    // Direktkauf-Absicht von der Website (/app?action=buy) über den Reload retten.
+    // Direktkauf-Absicht von der Website (/app?action=buy&modules=…&tier=…) über den Reload retten.
     var buyIntent = /[?&]action=buy/.test(location.search);
-    if (buyIntent) { try { sessionStorage.setItem('werkos_buy_intent', '1'); } catch (e) {} }
+    var mMatch = location.search.match(/[?&]modules=([a-z,]+)/);
+    var tMatch = location.search.match(/[?&]tier=([0-2])/);
+    if (buyIntent) {
+      try {
+        sessionStorage.setItem('werkos_buy_intent', '1');
+        if (mMatch) sessionStorage.setItem('werkos_buy_modules', mMatch[1]);
+        if (tMatch) sessionStorage.setItem('werkos_buy_tier', tMatch[1]);
+      } catch (e) {}
+    }
     buyIntent = buyIntent || (function () { try { return sessionStorage.getItem('werkos_buy_intent') === '1'; } catch (e) { return false; } })();
     if (inviteMatch && !s) { showGate(inviteMatch[1]); return; }
     if (!s) { showGate(null, { buy: buyIntent }); return; }
@@ -776,14 +919,7 @@
       // URL-Parameter entfernen (kein erneutes Triggern beim Reload).
       try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
       if (ck === 'success') {
-        // Webhook schaltet frei — Session ein paar Mal nachladen, bis es greift.
-        var tries = 0;
-        var poll = setInterval(function () {
-          tries++;
-          refreshSession().then(function () { applyModules(); if (typeof window.render === 'function') { try { window.render(); } catch (e) {} } });
-          if (tries >= 5) clearInterval(poll);
-        }, 2000);
-        toast('✅ Zahlung erhalten — deine Freischaltung wird aktiviert …');
+        paymentStatusBanner();
       } else if (ck === 'cancel') {
         toast('Zahlung abgebrochen — es wurde nichts berechnet.');
       }
@@ -793,14 +929,21 @@
     applyServerConfig();
     setInterval(refreshSession, 4 * 3600 * 1000);
     showAccountWidget();
-    // Direktkauf: nach Registrierung/Login das Konto-Panel automatisch öffnen.
+    // Direktkauf: nach Registrierung/Login den Kauf fortsetzen.
     if (buyIntent) {
-      try { sessionStorage.removeItem('werkos_buy_intent'); } catch (e) {}
+      var selMods = (function () { try { return (sessionStorage.getItem('werkos_buy_modules') || '').split(',').filter(Boolean); } catch (e) { return []; } })();
+      var selTier = (function () { try { return Number(sessionStorage.getItem('werkos_buy_tier')) || 0; } catch (e) { return 0; } })();
+      try { sessionStorage.removeItem('werkos_buy_intent'); sessionStorage.removeItem('werkos_buy_modules'); sessionStorage.removeItem('werkos_buy_tier'); } catch (e) {}
       setTimeout(function () {
-        var badge = document.querySelector('#werkosAcct .wa-badge');
-        var panel = document.querySelector('#werkosAcct .wa-panel');
-        if (badge && panel && !panel.classList.contains('open')) badge.click();
-        toast('Konto bereit — wähle deine Module und schließe direkt ab.');
+        if (selMods.length) {
+          // Modulauswahl aus dem Preisrechner → direkt zum Modul-Checkout.
+          openModuleCheckout(selMods, selTier);
+        } else {
+          var badge = document.querySelector('#werkosAcct .wa-badge');
+          var panel = document.querySelector('#werkosAcct .wa-panel');
+          if (badge && panel && !panel.classList.contains('open')) badge.click();
+          toast('Konto bereit — wähle deine Module und schließe direkt ab.');
+        }
       }, 700);
     }
     // Auto-Unlock: App-Modus aus WERKOS-Rolle ableiten (kein Doppel-Login)
