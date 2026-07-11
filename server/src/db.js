@@ -262,6 +262,64 @@ CREATE TABLE IF NOT EXISTS mail_log (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mail_tenant ON mail_log(tenant_id, created_at);
+
+-- Host-Sonderangebote: der Betreiber schaltet Kampagnen, die den Mandanten als
+-- Popup in der App erscheinen (z. B. „Modul X diesen Monat -30 %"). Zielgruppe
+-- über audience (all|trial|active|tenant) + optional audience_tenant.
+CREATE TABLE IF NOT EXISTS promo_campaigns (
+  id             TEXT PRIMARY KEY,
+  title          TEXT NOT NULL,
+  body           TEXT NOT NULL DEFAULT '',
+  cta_label      TEXT,
+  cta_action     TEXT,                       -- 'buy' | 'module' | 'url' | 'none'
+  cta_target     TEXT,                       -- Modul-Key / URL, je nach cta_action
+  badge          TEXT,                       -- z. B. „-30 %" oder „NEU"
+  audience       TEXT NOT NULL DEFAULT 'all',-- all | trial | active | tenant
+  audience_tenant TEXT,                      -- bei audience='tenant'
+  status         TEXT NOT NULL DEFAULT 'active', -- active | paused | ended
+  starts_at      TEXT,
+  ends_at        TEXT,
+  created_by     TEXT,
+  created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS promo_status ON promo_campaigns(status, audience);
+
+-- Reaktionen der Mandanten auf eine Kampagne (Anzeige/Klick/Weggeklickt) —
+-- für „nicht mehr zeigen" und für die Auswertung im Host-Portal.
+CREATE TABLE IF NOT EXISTS promo_events (
+  id         TEXT PRIMARY KEY,
+  promo_id   TEXT NOT NULL REFERENCES promo_campaigns(id),
+  tenant_id  TEXT NOT NULL,
+  kind       TEXT NOT NULL,                  -- shown | dismissed | clicked
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS promo_ev ON promo_events(promo_id, tenant_id, kind);
+
+-- Support-/Beratungs-Anfragen: entstehen, wenn der KI-Chatbot an einen Menschen
+-- weiterleitet oder ein Interessent das Kontaktformular nutzt. transcript_json
+-- hält den Chatverlauf für den Host.
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id            TEXT PRIMARY KEY,
+  tenant_id     TEXT,                        -- NULL bei anonymem Website-Chat
+  source        TEXT NOT NULL DEFAULT 'chat',-- chat | contact
+  name          TEXT,
+  email         TEXT,
+  phone         TEXT,
+  topic         TEXT,
+  message       TEXT,
+  transcript_json TEXT NOT NULL DEFAULT '[]',
+  status        TEXT NOT NULL DEFAULT 'open', -- open | done
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS support_status ON support_tickets(status, created_at);
+
+-- Plattform-weite Betreiber-Einstellungen (Schlüssel/Wert), z. B. HubSpot-Token.
+-- Nicht mandantengebunden — nur über die Admin-API (Host) erreichbar.
+CREATE TABLE IF NOT EXISTS platform_settings (
+  key        TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
 `);
 
 // ---------------------------------------------------------------------------
@@ -703,7 +761,88 @@ function listMailLog(tenantId, limit) {
 }
 function safeJson(s) { try { return JSON.parse(s); } catch (_e) { return {}; } }
 
+// ---- Sonderangebote / Host-Kampagnen -------------------------------------
+function createPromo(p) {
+  const pid = id('promo');
+  db.prepare(`INSERT INTO promo_campaigns
+    (id, title, body, cta_label, cta_action, cta_target, badge, audience, audience_tenant, status, starts_at, ends_at, created_by, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(pid, p.title, p.body || '', p.ctaLabel || null, p.ctaAction || 'none', p.ctaTarget || null,
+      p.badge || null, p.audience || 'all', p.audienceTenant || null, 'active', p.startsAt || null, p.endsAt || null,
+      p.createdBy || 'platform-admin', nowIso());
+  return getPromo(pid);
+}
+function getPromo(pid) { return db.prepare('SELECT * FROM promo_campaigns WHERE id = ?').get(pid); }
+function listPromos() { return db.prepare('SELECT * FROM promo_campaigns ORDER BY created_at DESC').all(); }
+function setPromoStatus(pid, status) {
+  db.prepare('UPDATE promo_campaigns SET status = ? WHERE id = ?').run(status, pid);
+}
+// Aktive Kampagne für einen Mandanten (Zielgruppe + Zeitfenster + noch nicht weggeklickt).
+function activePromoForTenant(tenant) {
+  const now = nowIso();
+  const rows = db.prepare("SELECT * FROM promo_campaigns WHERE status = 'active' ORDER BY created_at DESC").all();
+  const isTrial = tenant.plan === 'TRIAL';
+  for (const p of rows) {
+    if (p.starts_at && p.starts_at > now) continue;
+    if (p.ends_at && p.ends_at < now) continue;
+    if (p.audience === 'trial' && !isTrial) continue;
+    if (p.audience === 'active' && isTrial) continue;
+    if (p.audience === 'tenant' && p.audience_tenant !== tenant.id) continue;
+    const dismissed = db.prepare("SELECT 1 FROM promo_events WHERE promo_id = ? AND tenant_id = ? AND kind = 'dismissed' LIMIT 1").get(p.id, tenant.id);
+    if (dismissed) continue;
+    return p;
+  }
+  return null;
+}
+function recordPromoEvent(promoId, tenantId, kind) {
+  db.prepare('INSERT INTO promo_events (id, promo_id, tenant_id, kind, created_at) VALUES (?,?,?,?,?)')
+    .run(id('pev'), promoId, tenantId, kind, nowIso());
+}
+function promoStats(promoId) {
+  const row = db.prepare(`SELECT
+      SUM(CASE WHEN kind='shown' THEN 1 ELSE 0 END) AS shown,
+      SUM(CASE WHEN kind='clicked' THEN 1 ELSE 0 END) AS clicked,
+      SUM(CASE WHEN kind='dismissed' THEN 1 ELSE 0 END) AS dismissed
+    FROM promo_events WHERE promo_id = ?`).get(promoId) || {};
+  return { shown: row.shown || 0, clicked: row.clicked || 0, dismissed: row.dismissed || 0 };
+}
+
+// ---- Support-Tickets (KI-Chat-Weiterleitung / Kontakt) --------------------
+function createSupportTicket(t) {
+  const sid = id('sup');
+  db.prepare(`INSERT INTO support_tickets
+    (id, tenant_id, source, name, email, phone, topic, message, transcript_json, status, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(sid, t.tenantId || null, t.source || 'chat', t.name || null, t.email || null, t.phone || null,
+      t.topic || null, t.message || null, JSON.stringify(t.transcript || []), 'open', nowIso());
+  return sid;
+}
+function listSupportTickets(status, limit) {
+  if (status) return db.prepare('SELECT * FROM support_tickets WHERE status = ? ORDER BY created_at DESC LIMIT ?').all(status, limit || 100);
+  return db.prepare('SELECT * FROM support_tickets ORDER BY created_at DESC LIMIT ?').all(limit || 100);
+}
+function setSupportTicketStatus(sid, status) {
+  db.prepare('UPDATE support_tickets SET status = ? WHERE id = ?').run(status, sid);
+}
+function countOpenSupportTickets() {
+  return (db.prepare("SELECT COUNT(*) AS n FROM support_tickets WHERE status = 'open'").get() || {}).n || 0;
+}
+
+// ---- Plattform-Einstellungen (Host, z. B. HubSpot-Token) ------------------
+function getPlatformSetting(key) {
+  const row = db.prepare('SELECT value_json FROM platform_settings WHERE key = ?').get(key);
+  return row ? safeJson(row.value_json) : null;
+}
+function setPlatformSetting(key, value) {
+  db.prepare(`INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?,?,?)
+    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`)
+    .run(key, JSON.stringify(value || {}), nowIso());
+}
+
 module.exports = {
+  createPromo, getPromo, listPromos, setPromoStatus, activePromoForTenant, recordPromoEvent, promoStats,
+  createSupportTicket, listSupportTickets, setSupportTicketStatus, countOpenSupportTickets,
+  getPlatformSetting, setPlatformSetting,
   db, audit, auditList, auditVerify,
   setIntegration, getIntegration, listIntegrations, findTenantByInboxToken,
   addInboxItem, listInbox, setInboxStatus,

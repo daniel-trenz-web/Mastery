@@ -959,3 +959,152 @@ test('Statische Auslieferung: Website, PWA und Bibliotheken erreichbar', async (
   const fav = await fetch(BASE + '/favicon.ico');
   assert.equal(fav.status, 200, 'Favicon-Route');
 });
+
+// ===========================================================================
+// Neue Bausteine: KI-Chatbot, KI-Aufmaß, Sonderangebote, HubSpot, Admin-Ausbau
+// ===========================================================================
+const ADM = { headers: { 'X-Admin-Token': 'test-admin-token' } };
+
+test('KI-Chatbot: ohne Key sauberer Fallback + Support-Weiterleitung erzeugt Ticket', async () => {
+  // Ohne KI-Key: configured:false, wantsHuman:true (UI bietet dann Kontakt an)
+  const r = await api('POST', '/api/chat', { body: { messages: [{ role: 'user', text: 'Was kostet das für 3 Mitarbeiter?' }] } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.configured, false);
+  assert.equal(r.data.wantsHuman, true);
+  // Handoff-Kontaktformular legt ein Support-Ticket an
+  const h = await api('POST', '/api/chat/handoff', { body: { name: 'Max Meister', email: 'max@dach.de', topic: 'Preis', message: 'Bitte Rückruf' } });
+  assert.equal(h.status, 201);
+  assert.ok(h.data.ticketId);
+  // Ohne Kontakt: 400
+  const bad = await api('POST', '/api/chat/handoff', { body: { message: 'nix' } });
+  assert.equal(bad.status, 400);
+  // Host sieht das Ticket im Support-Postfach
+  const list = await api('GET', '/api/admin/support', ADM);
+  assert.equal(list.status, 200);
+  assert.ok(list.data.tickets.some((t) => t.email === 'max@dach.de'), 'Ticket im Host-Postfach');
+  assert.ok(list.data.open >= 1);
+  const tid = list.data.tickets.find((t) => t.email === 'max@dach.de').id;
+  const close = await api('POST', '/api/admin/support/' + tid + '/close', ADM);
+  assert.equal(close.status, 200);
+});
+
+test('KI-Aufmaß: Modul-Gate greift, mit Modul sauberer Fallback ohne Key', async () => {
+  const s = await register('Aufmaß Plan GmbH', 'aufmassplan@test.de');
+  const img = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1]);
+  await checkout(s.accessToken, 'START'); // START hat kein aufmass
+  const blocked = await api('POST', '/api/t/ai/floor-plan', { token: s.accessToken, raw: img, headers: { 'Content-Type': 'image/jpeg' } });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.data.error, 'module-not-active');
+  // aufmass freischalten → Endpoint erreichbar, ohne KI-Key configured:false
+  await api('POST', '/api/admin/tenants/' + s.tenant.id + '/grant', { ...ADM, body: { module: 'aufmass', days: 7 } });
+  const r = await api('POST', '/api/t/ai/floor-plan', { token: s.accessToken, raw: img, headers: { 'Content-Type': 'image/jpeg' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.configured, false);
+});
+
+test('Sonderangebote: Host-Kampagne → Popup beim Mandanten → weggeklickt verschwindet', async () => {
+  const s = await register('Promo Ziel GmbH', 'promoziel@test.de');
+  // Host legt Kampagne für alle an
+  const create = await api('POST', '/api/admin/promos', { ...ADM, body: { title: 'Sommer-Aktion', body: 'Diesen Monat -30 %', badge: '-30 %', ctaAction: 'buy', ctaLabel: 'Jetzt sichern', audience: 'all' } });
+  assert.equal(create.status, 201);
+  const pid = create.data.promo.id;
+  // Mandant bekommt das aktive Popup
+  const active = await api('GET', '/api/t/promo/active', { token: s.accessToken });
+  assert.equal(active.status, 200);
+  assert.ok(active.data.promo && active.data.promo.id === pid, 'aktives Popup');
+  assert.equal(active.data.promo.badge, '-30 %');
+  // Wegklicken → danach kein Popup mehr
+  const ev = await api('POST', '/api/t/promo/' + pid + '/event', { token: s.accessToken, body: { kind: 'dismissed' } });
+  assert.equal(ev.status, 200);
+  const again = await api('GET', '/api/t/promo/active', { token: s.accessToken });
+  assert.equal(again.data.promo, null, 'nach Wegklicken kein Popup');
+  // Host sieht Statistik + kann pausieren
+  const promos = await api('GET', '/api/admin/promos', ADM);
+  const mine = promos.data.promos.find((p) => p.id === pid);
+  assert.ok(mine.stats.shown >= 1 && mine.stats.dismissed >= 1);
+  const pause = await api('POST', '/api/admin/promos/' + pid + '/status', { ...ADM, body: { status: 'paused' } });
+  assert.equal(pause.status, 200);
+});
+
+test('Sonderangebote: Zielgruppe trial vs. active wird respektiert', async () => {
+  const trialT = await register('Trial Betrieb', 'trialpromo@test.de');
+  const paidT = await register('Zahlender Betrieb', 'paidpromo@test.de');
+  await checkout(paidT.accessToken, 'BETRIEB'); // nicht mehr TRIAL
+  const c = await api('POST', '/api/admin/promos', { ...ADM, body: { title: 'Nur Testphase', audience: 'trial' } });
+  assert.equal(c.status, 201);
+  const forTrial = await api('GET', '/api/t/promo/active', { token: trialT.accessToken });
+  assert.equal(forTrial.data.promo && forTrial.data.promo.id, c.data.promo.id, 'Trial sieht Kampagne');
+  const forPaid = await api('GET', '/api/t/promo/active', { token: paidT.accessToken });
+  assert.notEqual(forPaid.data.promo && forPaid.data.promo.id, c.data.promo.id, 'Zahler sieht Trial-Kampagne NICHT');
+});
+
+test('Host-Portal: Umsatz-Übersicht, Support-Login (Impersonation), Voll-Audit', async () => {
+  const s = await register('Umsatz GmbH', 'umsatz@test.de');
+  await checkout(s.accessToken, 'BETRIEB'); // 35 €
+  // Umsatz
+  const rev = await api('GET', '/api/admin/revenue', ADM);
+  assert.equal(rev.status, 200);
+  assert.ok(rev.data.mrrEur >= 35, 'MRR enthält das neue Abo');
+  assert.ok(rev.data.byPlan.BETRIEB >= 35);
+  // Support-Login → gültige Owner-Session
+  const imp = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/support-login', ADM);
+  assert.equal(imp.status, 200);
+  assert.ok(imp.data.session.accessToken);
+  const acct = await api('GET', '/api/account', { token: imp.data.session.accessToken });
+  assert.equal(acct.status, 200);
+  assert.equal(acct.data.tenant.id, s.tenant.id, 'Support agiert im richtigen Mandanten');
+  // Voll-Audit paginiert + Integrität
+  const aud = await api('GET', '/api/admin/tenants/' + s.tenant.id + '/audit?limit=5&offset=0', ADM);
+  assert.equal(aud.status, 200);
+  assert.equal(aud.data.integrityOk, true, 'Hash-Kette intakt');
+  assert.ok(Array.isArray(aud.data.entries) && aud.data.total >= 1);
+  // Abo beenden
+  const cancel = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/subscription/cancel', ADM);
+  assert.equal(cancel.status, 200);
+});
+
+test('Host-Portal: Nutzerverwaltung (Rolle/Status) über Admin', async () => {
+  const s = await register('Team GmbH', 'teamadmin@test.de');
+  const owner = dbm.getUserByEmail('teamadmin@test.de');
+  const upd = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/users/' + owner.id, { ...ADM, body: { status: 'active', role: 'owner' } });
+  assert.equal(upd.status, 200);
+  assert.ok(upd.data.users.some((u) => u.id === owner.id));
+  const bad = await api('POST', '/api/admin/tenants/' + s.tenant.id + '/users/gibtsnicht', ADM);
+  assert.equal(bad.status, 404);
+});
+
+test('HubSpot: Token speichern → configured, ohne Token kein Sync', async () => {
+  const g = await api('GET', '/api/admin/hubspot', ADM);
+  assert.equal(g.status, 200);
+  assert.equal(g.data.configured, false);
+  const noSync = await api('POST', '/api/admin/hubspot/sync', ADM);
+  assert.equal(noSync.status, 400);
+  assert.equal(noSync.data.error, 'not-configured');
+  const set = await api('POST', '/api/admin/hubspot', { ...ADM, body: { token: 'pat-eu1-testtoken', portalId: '12345' } });
+  assert.equal(set.status, 200);
+  assert.equal(set.data.configured, true);
+  const g2 = await api('GET', '/api/admin/hubspot', ADM);
+  assert.equal(g2.data.configured, true);
+  assert.ok(g2.data.tokenHint.endsWith('oken'), 'nur Token-Hinweis, kein Klartext');
+  // Token wieder entfernen, damit /sync keinen echten Netzcall macht
+  await api('POST', '/api/admin/hubspot', { ...ADM, body: { token: '' } });
+});
+
+test('Modul-Gate-Fix: GAEB an auftraege, iCal an planung (nicht buchhaltung)', async () => {
+  // BETRIEB = zeiten+auftraege+geld (kein buchhaltung) → GAEB muss jetzt gehen
+  const a = await register('GAEB Betrieb', 'gaebfix@test.de');
+  await checkout(a.accessToken, 'BETRIEB');
+  const gaeb = await api('POST', '/api/t/gaeb/parse', { token: a.accessToken, raw: Buffer.from('<GAEB></GAEB>', 'utf8'), headers: { 'Content-Type': 'application/xml' } });
+  assert.notEqual(gaeb.status, 403, 'auftraege schaltet GAEB frei (Gate-Bug behoben)');
+  // START = nur zeiten → GAEB weiterhin gesperrt
+  const b = await register('Klein Betrieb', 'gaebklein@test.de');
+  await checkout(b.accessToken, 'START');
+  const blocked = await api('POST', '/api/t/gaeb/parse', { token: b.accessToken, raw: Buffer.from('<GAEB></GAEB>', 'utf8'), headers: { 'Content-Type': 'application/xml' } });
+  assert.equal(blocked.status, 403);
+  assert.equal(blocked.data.module, 'auftraege');
+  // iCal: BETRIEB_PLUS hat planung → nicht 403
+  const c = await register('Plan Betrieb', 'icalplan@test.de');
+  await checkout(c.accessToken, 'BETRIEB_PLUS');
+  const ical = await api('POST', '/api/t/ical/publish', { token: c.accessToken, body: { events: [] } });
+  assert.notEqual(ical.status, 403, 'planung schaltet iCal frei');
+});
