@@ -16892,6 +16892,12 @@
         <p style="font-size:12px; color:#666;">Startet den Einrichtungs-Assistenten erneut, um Firmendaten und Tagessätze schnell zu konfigurieren.</p>
         <button class="secondary" onclick="state.onboardingDone=false; openOnboardingWizard();">🪄 Onboarding starten</button>
       </div>
+      <div class="section">
+        <h3>🧪 Beispieldaten</h3>
+        <p style="font-size:12px; color:#666;">Zum Ausprobieren kannst du fertige Beispiel-Projekte, -Kunden und -Mitarbeiter laden — und jederzeit mit einem Klick wieder entfernen. Deine <strong>eigenen</strong> Daten bleiben nach der Testphase erhalten und stehen nach dem Kauf im selben Betrieb weiter zur Verfügung.</p>
+        <button class="secondary" onclick="if(confirm('Beispiel-Projekte, -Kunden und -Mitarbeiter laden?')){loadExampleData();state.demoDataChoice='example';saveState();render();(window.mToast&&mToast('✓ Beispieldaten geladen.'));}">🧪 Beispieldaten laden</button>
+        <button class="warn" style="margin-left:6px;" onclick="if(confirm('Alle als Beispiel markierten Daten entfernen? Deine eigenen Einträge bleiben erhalten.')){clearExampleData();}">🗑 Beispieldaten entfernen</button>
+      </div>
 
 
       <div class="section">
@@ -44129,10 +44135,16 @@
     setTimeout(_renderDemoBanner, 50);
     setTimeout(_renderEmployeeFAB, 50);
     setTimeout(_updateBellBadge, 50);
-    // Onboarding-Wizard automatisch beim ersten Admin-Login öffnen
+    // Onboarding-Wizard automatisch beim ersten Admin-Login öffnen.
+    // Davor (nur beim allerersten Mal): Beispieldaten vs. eigene Daten wählen.
     if (newMode === 'admin' && state.onboardingDone === false) {
       setTimeout(() => {
-        if (state.onboardingDone === false) openOnboardingWizard();
+        if (state.onboardingDone !== false) return;
+        if (typeof maybeOfferDemoData === 'function' && !state.demoDataChoice) {
+          maybeOfferDemoData(function () { if (state.onboardingDone === false) openOnboardingWizard(); });
+        } else {
+          openOnboardingWizard();
+        }
       }, 300);
     }
   };
@@ -50608,6 +50620,103 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
 
   // -------- EINZELNUTZER V1.1 — Onboarding-Wizard --------
   let _ob = null;
+
+  // --- Demo-Start: Beispieldaten oder eigene Daten? -------------------------
+  // Beim allerersten Öffnen darf der Nutzer wählen. Eigene Daten bleiben nach
+  // der Testphase erhalten — nach dem Kauf wird im selben Betrieb weitergearbeitet.
+  function _stateLooksEmpty() {
+    var realEmps = (state.employees || []).filter(function (e) { return e && !e.isBLSelf && !e.hidden; });
+    return (state.projects || []).length === 0 && realEmps.length === 0
+      && (state.kunden || []).length === 0 && (state.angebote || []).length === 0;
+  }
+  window.loadExampleData = function () {
+    var now = Date.now();
+    if (!Array.isArray(state.employees)) state.employees = [];
+    if (!Array.isArray(state.kunden)) state.kunden = [];
+    if (!Array.isArray(state.suppliers)) state.suppliers = [];
+    if (!Array.isArray(state.projects)) state.projects = [];
+    [
+      { name: 'Thomas Berger', role: 'Vorarbeiter', trade: 'Maurer', rate: 320 },
+      { name: 'Kevin Sahin', role: 'Geselle', trade: 'Trockenbau', rate: 260 },
+      { name: 'Lukas Moser', role: 'Auszubildender', trade: 'Maler', rate: 120 }
+    ].forEach(function (e, i) {
+      state.employees.push({
+        id: 'emp_demo_' + i + '_' + now, name: e.name, username: '', role: e.role,
+        color: ['#2a5080', '#1e8449', '#8a6d1a'][i % 3], email: '', phone: '',
+        trades: [e.trade], systemRole: 'mitarbeiter', supervisorId: null,
+        dailyTargetMinutes: 480, weeklyOvertimeIncludedMinutes: 0, previousOvertimeCarry: 0,
+        vacationDaysPerYear: 30, dailyRate: e.rate, createdAt: now, _demo: true
+      });
+    });
+    [
+      { name: 'Familie Schmidt', contactPerson: 'Anja Schmidt', street: 'Lindenweg 12', zip: '40210', city: 'Düsseldorf', phone: '0211 1234567', email: 'schmidt@example.de' },
+      { name: 'Hausverwaltung Nord GmbH', contactPerson: 'Herr Klein', street: 'Hafenstr. 8', zip: '20095', city: 'Hamburg', phone: '040 9876543', email: 'klein@hv-nord.example.de' },
+      { name: 'Bäckerei Wagner', contactPerson: 'Petra Wagner', street: 'Marktplatz 3', zip: '50667', city: 'Köln', phone: '0221 555123', email: 'info@wagner.example.de' }
+    ].forEach(function (k) { state.kunden.push(Object.assign({ id: uid('k'), createdAt: now, _demo: true }, k)); });
+    [
+      { name: 'Raab Karcher', contactPerson: 'Vertrieb', address: 'Baustoffweg 1, 40468 Düsseldorf', email: 'bestellung@raab.example.de' },
+      { name: 'Sonepar Elektro-Großhandel', contactPerson: 'Service', address: 'Industriestr. 22, 45143 Essen', email: 'shk@sonepar.example.de' }
+    ].forEach(function (s) { state.suppliers.push(Object.assign({ id: uid('sup'), createdAt: now, _demo: true }, s)); });
+    [
+      { name: 'Badsanierung Schmidt', address: 'Lindenweg 12, 40210 Düsseldorf', color: '#2a5080' },
+      { name: 'Treppenhaus-Renovierung HV Nord', address: 'Hafenstr. 8, 20095 Hamburg', color: '#1e8449' }
+    ].forEach(function (p) {
+      var proj = {
+        id: uid('p'), name: p.name, color: p.color, projectType: 'STANDARD',
+        hauptauftrag: '', wirtschaftseinheitId: null, wirtschaftseinheitName: '', mieteinheit: '', mieteinheitNr: '',
+        address: p.address, groesse: '', pspNumber: '', orderNumber: '', description: '', notes: '',
+        status: 'planned', completedDate: null, createdAt: now, infoLocked: false,
+        projectManagerIds: [], orders: [], trades: {}, plans: [], adminPhotos: [], employeePhotos: [], deliveryNotes: [], journal: [], _demo: true
+      };
+      try { if (typeof generateProjectNumberFor === 'function') proj.projectNumber = generateProjectNumberFor(proj); } catch (e) {}
+      state.projects.push(proj);
+    });
+    state.demoDataChoice = 'example';
+  };
+  // Alle mit _demo markierten Beispieldaten wieder entfernen (ein Klick).
+  window.clearExampleData = function () {
+    ['employees', 'kunden', 'suppliers', 'projects'].forEach(function (key) {
+      if (Array.isArray(state[key])) state[key] = state[key].filter(function (x) { return !(x && x._demo); });
+    });
+    state.demoDataChoice = 'own';
+    if (typeof saveState === 'function') saveState();
+    if (typeof render === 'function') { try { render(); } catch (e) {} }
+    if (typeof mToast === 'function') mToast('Beispieldaten entfernt — jetzt mit eigenen Daten starten.');
+  };
+  window.maybeOfferDemoData = function (cb) {
+    cb = cb || function () {};
+    if (state.demoDataChoice || !_stateLooksEmpty()) { cb(); return; }
+    var saas = !!(window.WERKOS && WERKOS.session && WERKOS.session());
+    var ov = document.createElement('div');
+    ov.id = 'demoChoiceOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483400;background:rgba(12,25,40,.62);display:flex;align-items:center;justify-content:center;padding:18px;';
+    ov.innerHTML =
+      '<div style="max-width:640px;width:100%;background:#fff;border-radius:18px;padding:26px 26px 22px;box-shadow:0 30px 80px rgba(0,0,0,.4);">' +
+      '<div style="font-size:34px;line-height:1;">🚀</div>' +
+      '<h2 style="margin:10px 0 4px;font-size:22px;">Womit möchtest du starten?</h2>' +
+      '<p style="color:#667;font-size:14px;margin-bottom:18px;">Du kannst werkflow mit Beispieldaten ausprobieren oder direkt mit deinen eigenen Daten loslegen. Beides lässt sich jederzeit ändern.</p>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" id="demoChoiceGrid">' +
+        '<button id="demoOwn" style="text-align:left;border:1.5px solid #d7e2ee;border-radius:14px;padding:18px;background:#fff;cursor:pointer;">' +
+          '<div style="font-size:24px;">📝</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Mit eigenen Daten</div>' +
+          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Leerer Betrieb — du legst deine echten Projekte, Kunden und Mitarbeiter an.' +
+            (saas ? ' <b>Alles bleibt nach der Testphase erhalten</b> — nach dem Kauf arbeitest du im selben Betrieb weiter, ohne Datenverlust.' : '') + '</div>' +
+        '</button>' +
+        '<button id="demoExample" style="text-align:left;border:1.5px solid #17924e;border-radius:14px;padding:18px;background:rgba(23,146,78,.06);cursor:pointer;">' +
+          '<div style="font-size:24px;">🧪</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Mit Beispieldaten</div>' +
+          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Fertige Projekte, Kunden &amp; Mitarbeiter zum Erkunden. Du kannst sie später mit einem Klick löschen.</div>' +
+        '</button>' +
+      '</div>' +
+      '<div style="margin-top:14px;font-size:11.5px;color:#8a97a6;text-align:center;">Deine Wahl kannst du in den Einstellungen jederzeit revidieren.</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    function finish() { ov.remove(); if (typeof saveState === 'function') saveState(); if (typeof render === 'function') { try { render(); } catch (e) {} } cb(); }
+    ov.querySelector('#demoOwn').onclick = function () { state.demoDataChoice = 'own'; finish(); };
+    ov.querySelector('#demoExample').onclick = function () {
+      try { loadExampleData(); } catch (e) {}
+      if (typeof mToast === 'function') setTimeout(function () { mToast('✓ Beispieldaten geladen — schau dich um. Löschen jederzeit über ⚙ Einstellungen.'); }, 400);
+      finish();
+    };
+  };
 
   window.openOnboardingWizard = function() {
     _ob = {

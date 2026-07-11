@@ -122,15 +122,19 @@ function pricingInfo(tenant) {
   const tierIdx = cfg.employeeTierIndex(employees);
   const active = sellableActive(tenant);
   const count = active.length;
-  const monthlyEur = cfg.modulePrice(count, employees);
+  const monthlyEur = cfg.modulePriceFor(active, employees);
+  // Rabatt-Kontext (für die Anzeige „X % gespart")
+  const listEur = active.reduce((s, k) => s + cfg.moduleUnitPrice(k, employees), 0);
   const upsell = {};
   for (const k of cfg.SELLABLE_MODULES) {
     if (active.includes(k)) continue;
-    const next = cfg.modulePrice(count + 1, employees);
+    const next = cfg.modulePriceFor(active.concat([k]), employees);
     upsell[k] = {
-      addEur: next - monthlyEur,   // Mehrpreis für DIESES Modul
-      newTotalEur: next,           // neuer Paketpreis danach
+      addEur: next - monthlyEur,        // Mehrpreis für DIESES Modul (inkl. Rabatteffekt)
+      unitEur: cfg.moduleUnitPrice(k, employees), // Einzelpreis ohne Rabatt
+      newTotalEur: next,                // neuer Paketpreis danach
       newCount: count + 1,
+      newDiscountPct: Math.round(cfg.bundleDiscount(count + 1) * 100),
     };
   }
   return {
@@ -140,6 +144,10 @@ function pricingInfo(tenant) {
     activeModules: active,
     moduleCount: count,
     monthlyEur,
+    listEur,                                   // Summe der Einzelpreise (ohne Rabatt)
+    savingEur: Math.max(0, listEur - monthlyEur),
+    discountPct: Math.round(cfg.bundleDiscount(count) * 100),
+    unitPrices: cfg.SELLABLE_MODULES.reduce((o, k) => { o[k] = cfg.moduleUnitPrice(k, employees); return o; }, {}),
     maxModules: cfg.SELLABLE_MODULES.length,
     upsell,
   };
@@ -450,7 +458,7 @@ async function handleApi(req, res, pathname) {
 
     // Preis nach Modul×MA-Matrix (für die Module des Tarifs); Fallback Tarifpreis.
     const planModules = (cfg.PLANS[plan].modules || []).filter((k) => cfg.SELLABLE_MODULES.includes(k));
-    const amountEur = cfg.modulePrice(planModules.length, tenantEmployees(ctx.tenant)) || cfg.PLANS[plan].priceEur;
+    const amountEur = cfg.modulePriceFor(planModules, tenantEmployees(ctx.tenant)) || cfg.PLANS[plan].priceEur;
 
     // Mit Stripe: echte Zahlung über gehostete Checkout-Seite (Karte + SEPA).
     // Freischaltung erst nach bestätigter Zahlung (Webhook checkout.session.completed).

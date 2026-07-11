@@ -292,6 +292,7 @@
     '#werkosGate .wg-err{color:#c0392b;font-size:13px;margin-top:10px;min-height:16px;font-weight:600}' +
     '#werkosGate .wg-foot{margin-top:14px;font-size:11px;color:#889;text-align:center;line-height:1.6}' +
     '#werkosGate .wg-trial{background:#eafaf1;color:#1e8449;border-radius:9px;padding:9px 10px;font-size:12px;margin-top:12px;text-align:center;font-weight:600}' +
+    '#werkosGate .wg-buy{background:#fff5df;color:#8a6d1a;border:1px solid #f0dca8;border-radius:9px;padding:9px 11px;font-size:12.5px;margin:2px 0 14px;text-align:center;font-weight:600}' +
     '#werkosAcct{position:fixed;left:10px;bottom:10px;z-index:2147482000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}' +
     '#werkosAcct .wa-badge{display:flex;align-items:center;gap:7px;background:#0e2236;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:22px;padding:6px 13px 6px 7px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3)}' +
     '#werkosAcct .wa-badge .dot{width:22px;height:22px;border-radius:50%;background:#2ecc71;color:#0e2236;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}' +
@@ -328,7 +329,8 @@
     document.head.appendChild(st);
   }
 
-  function gateHtml(inviteToken) {
+  function gateHtml(inviteToken, opts) {
+    var buy = !!(opts && opts.buy);
     var logo = '<div class="wg-logo"><svg viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">' +
       '<defs><linearGradient id="wfg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#3fcf7f"/></linearGradient></defs>' +
       '<path d="M 12 38 C 17 72, 29 74, 36 52 C 41 40, 47 40, 52 52 C 59 74, 71 72, 78 46 L 90 24" fill="none" stroke="url(#wfg)" stroke-width="12" stroke-linecap="round"/></svg></div>';
@@ -339,30 +341,34 @@
         '<button class="wg-btn" id="wgJoin">Betrieb beitreten</button>' +
         '<div class="wg-err" id="wgErr"></div></div>';
     }
+    var sub = buy
+      ? 'Direkt buchen — Konto anlegen, Module wählen und sofort per Karte oder SEPA bezahlen. Keine Demo nötig.'
+      : 'Dein ganzer Betrieb in einer App — Module frei wählen, Preis nach Mitarbeiterzahl.';
+    var banner = buy ? '<div class="wg-buy">🛒 Direktkauf — nach dem Anlegen öffnet sich sofort die Modul- &amp; Zahlungsauswahl.</div>' : '';
     return '<div class="wg-card">' + logo +
-      '<h1>werk<span style=\'color:#1e8449\'>flow</span></h1><div class="wg-sub">Dein ganzer Betrieb in einer App — ein Preis pro Betrieb, egal wie viele Mitarbeiter.</div>' +
-      '<div class="wg-tabs"><button class="wg-tab on" data-t="login">Anmelden</button><button class="wg-tab" data-t="reg">Betrieb registrieren</button></div>' +
-      '<div id="wgLogin">' +
+      '<h1>werk<span style=\'color:#1e8449\'>flow</span></h1><div class="wg-sub">' + sub + '</div>' + banner +
+      '<div class="wg-tabs"><button class="wg-tab' + (buy ? '' : ' on') + '" data-t="login">Anmelden</button><button class="wg-tab' + (buy ? ' on' : '') + '" data-t="reg">Betrieb registrieren</button></div>' +
+      '<div id="wgLogin"' + (buy ? ' style="display:none"' : '') + '>' +
       '<label>E-Mail</label><input id="wgEmail" type="email" autocomplete="username" placeholder="chef@betrieb.de">' +
       '<label>Passwort</label><input id="wgPass" type="password" autocomplete="current-password">' +
       '<button class="wg-btn" id="wgDoLogin">Anmelden</button>' +
       '</div>' +
-      '<div id="wgReg" style="display:none">' +
+      '<div id="wgReg"' + (buy ? '' : ' style="display:none"') + '>' +
       '<label>Firmenname</label><input id="wgCompany" placeholder="z. B. Malerbetrieb Muster GmbH">' +
       '<label>Dein Name</label><input id="wgRName" autocomplete="name" placeholder="Vor- und Nachname">' +
       '<label>E-Mail</label><input id="wgREmail" type="email" autocomplete="username" placeholder="chef@betrieb.de">' +
       '<label>Passwort (mind. 10 Zeichen)</label><input id="wgRPass" type="password" autocomplete="new-password">' +
-      '<button class="wg-btn" id="wgDoReg">14 Tage kostenlos testen</button>' +
-      '<div class="wg-trial">✓ Alle Module · ✓ ohne Zahlungsdaten · danach ab 15 €/Monat</div>' +
+      '<button class="wg-btn" id="wgDoReg">' + (buy ? 'Konto anlegen &amp; buchen' : '14 Tage kostenlos testen') + '</button>' +
+      '<div class="wg-trial">✓ Alle Module 14 Tage testen · ✓ ohne Zahlungsdaten · danach ab 14 €/Monat</div>' +
       '</div>' +
       '<div class="wg-err" id="wgErr"></div>' +
       '<div class="wg-foot">🇩🇪 Daten ausschließlich in Deutschland · DSGVO- &amp; GoBD-konform · Export jederzeit</div></div>';
   }
 
-  function showGate(inviteToken) {
+  function showGate(inviteToken, opts) {
     var el = document.createElement('div');
     el.id = 'werkosGate';
-    el.innerHTML = gateHtml(inviteToken);
+    el.innerHTML = gateHtml(inviteToken, opts);
     document.body.appendChild(el);
     var errBox = el.querySelector('#wgErr');
     function fail(r) {
@@ -758,8 +764,12 @@
     injectCss();
     var inviteMatch = location.hash.match(/[#&]invite=([A-Za-z0-9_-]+)/);
     var s = getSession();
+    // Direktkauf-Absicht von der Website (/app?action=buy) über den Reload retten.
+    var buyIntent = /[?&]action=buy/.test(location.search);
+    if (buyIntent) { try { sessionStorage.setItem('werkos_buy_intent', '1'); } catch (e) {} }
+    buyIntent = buyIntent || (function () { try { return sessionStorage.getItem('werkos_buy_intent') === '1'; } catch (e) { return false; } })();
     if (inviteMatch && !s) { showGate(inviteMatch[1]); return; }
-    if (!s) { showGate(null); return; }
+    if (!s) { showGate(null, { buy: buyIntent }); return; }
     // Rückkehr von der Stripe-Checkout-Seite auswerten.
     var ck = (location.search.match(/[?&]checkout=([a-z]+)/) || [])[1];
     if (ck) {
@@ -783,6 +793,16 @@
     applyServerConfig();
     setInterval(refreshSession, 4 * 3600 * 1000);
     showAccountWidget();
+    // Direktkauf: nach Registrierung/Login das Konto-Panel automatisch öffnen.
+    if (buyIntent) {
+      try { sessionStorage.removeItem('werkos_buy_intent'); } catch (e) {}
+      setTimeout(function () {
+        var badge = document.querySelector('#werkosAcct .wa-badge');
+        var panel = document.querySelector('#werkosAcct .wa-panel');
+        if (badge && panel && !panel.classList.contains('open')) badge.click();
+        toast('Konto bereit — wähle deine Module und schließe direkt ab.');
+      }, 700);
+    }
     // Auto-Unlock: App-Modus aus WERKOS-Rolle ableiten (kein Doppel-Login)
     setInterval(autoUnlock, 400);
     // Kundenantworten auf Angebots-Links regelmäßig abholen
