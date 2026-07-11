@@ -51532,6 +51532,16 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       <input type="text" id="amFormula" oninput="_amCalc()" placeholder="z. B. 4.5*2.6+3.2*2.6">
       <div id="amResult" class="aufmass-result">0,00</div>
       <div class="aufmass-help">💡 Tipp: Mehrere Teil-Aufmaße können nacheinander gespeichert werden. Sie werden im Auftrag als zusätzliche LV-Position hinzugefügt.</div>
+      <div style="border-top:1px solid var(--color-border); margin:16px 0 0; padding-top:14px;">
+        <label style="font-weight:700;">📤 Oder: Plan hochladen — die KI erstellt die Aufmaßtabelle</label>
+        <p style="font-size:11px; color:var(--color-text-muted);">Foto oder PDF eines Grundrisses / Bauplans. Die KI liest Räume, Raumnummern &amp; Maße aus und legt je Raum eine Position an (Fläche/Umfang). Prüfe die Werte vor der Übernahme.</p>
+        <div class="row" style="gap:8px; align-items:center;">
+          <input type="file" id="amPlanFile" accept="image/*,application/pdf" style="font-size:12px;">
+          <button class="secondary small" onclick="_amPlanUpload('${projId || ''}','${orderId || ''}')">🤖 KI-Aufmaß starten</button>
+        </div>
+        <div id="amPlanStatus" style="font-size:12px; margin-top:8px;"></div>
+        <div id="amPlanBox" style="margin-top:8px;"></div>
+      </div>
       <div class="modal-buttons">
         <button class="secondary" onclick="closeModal()">Abbrechen</button>
         <button class="success" onclick="saveAufmass('${projId || ''}','${orderId || ''}','${lvItemId || ''}')">💾 Speichern & in LV übernehmen</button>
@@ -51588,6 +51598,97 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     await saveState();
     closeModal();
     alert('✓ Aufmaß gespeichert: ' + fmtNum(qty, 3) + ' ' + unit + (price > 0 ? ' à ' + fmtEUR(price) + ' = ' + fmtEUR(qty * price) : ''));
+    if (projId && orderId && typeof openOrderDetail === 'function') openOrderDetail(projId, orderId, 'calc');
+  };
+
+  // KI-Aufmaß aus einem hochgeladenen Grundriss/Plan (Foto oder PDF).
+  window._amPlanUpload = async function(projId, orderId) {
+    const input = document.getElementById('amPlanFile');
+    const status = document.getElementById('amPlanStatus');
+    const box = document.getElementById('amPlanBox');
+    const file = input && input.files && input.files[0];
+    if (!file) { if (status) status.textContent = 'Bitte zuerst eine Datei wählen.'; return; }
+    const cfg = (state.serverConfig || {});
+    if (!cfg.apiUrl) { if (status) status.innerHTML = '<span style="color:#c0392b;">Kein Server verbunden (Demo-Modus) — bitte Räume manuell erfassen.</span>'; return; }
+    if (status) status.textContent = '⏳ KI liest den Plan …';
+    if (box) box.innerHTML = '';
+    try {
+      // Bilder komprimieren, PDFs unverändert senden (native Dokument-Vision)
+      let blob = file;
+      if (file.type && file.type.startsWith('image/') && typeof compressImage === 'function') {
+        try { const du = await compressImage(file, 2000, 0.8); blob = await (await fetch(du)).blob(); } catch (_e) { blob = file; }
+      }
+      const r = await fetch(cfg.apiUrl + '/ai/floor-plan', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': blob.type || file.type || 'application/octet-stream' }, cfg.apiKey ? { 'Authorization': 'Bearer ' + cfg.apiKey } : {}),
+        body: blob
+      });
+      if (r.status === 403) { if (status) status.innerHTML = '<span style="color:#c0392b;">Modul „Aufmaß & Raumplan" ist nicht aktiv.</span>'; return; }
+      const res = await r.json().catch(() => ({}));
+      if (res.configured === false) { if (status) status.innerHTML = '<span style="color:#c0392b;">' + escapeHtml(res.hint || 'KI-Aufmaß ist nicht aktiviert — bitte Räume manuell erfassen.') + '</span>'; return; }
+      if (!res.ok || !res.data || !Array.isArray(res.data.rooms) || !res.data.rooms.length) {
+        if (status) status.innerHTML = '<span style="color:#c0392b;">Keine Räume erkennbar — bitte Plan schärfer fotografieren oder manuell erfassen.</span>'; return;
+      }
+      const d = res.data;
+      window._amPlanRooms = d.rooms;
+      status.innerHTML = '✅ ' + d.rooms.length + ' Räume erkannt' + (d.scale ? ' · Maßstab ' + escapeHtml(d.scale) : '') + '. Bitte prüfen:';
+      const warn = (d.warnings || []).length ? '<div style="font-size:11px;color:#9c6a12;background:#fdf3e3;border-radius:8px;padding:6px 9px;margin-bottom:8px;">⚠ ' + d.warnings.map(escapeHtml).join(' · ') + '</div>' : '';
+      const rows = d.rooms.map((rm, i) => {
+        const area = Number(rm.area) || 0, per = Number(rm.perimeter) || 0;
+        const defUnit = area > 0 ? 'm²' : (per > 0 ? 'lfdm' : 'm²');
+        const defQty = area > 0 ? area : per;
+        return '<tr>' +
+          '<td><input value="' + escapeHtml(rm.number || '') + '" data-pr="num" data-i="' + i + '" style="width:52px;font-size:12px;"></td>' +
+          '<td><input value="' + escapeHtml(rm.name || '') + '" data-pr="name" data-i="' + i + '" style="width:100%;font-size:12px;"></td>' +
+          '<td style="font-size:11px;color:var(--color-text-muted);">' + (rm.length ? fmtNum(rm.length, 2) + '×' + fmtNum(rm.width || 0, 2) + ' m' : '–') + (rm.height ? ' · H ' + fmtNum(rm.height, 2) : '') + '</td>' +
+          '<td><input type="number" step="0.01" value="' + (defQty ? fmtNum(defQty, 2).replace(',', '.') : '') + '" data-pr="qty" data-i="' + i + '" style="width:74px;font-size:12px;"></td>' +
+          '<td><select data-pr="unit" data-i="' + i + '" style="font-size:12px;">' +
+          ['m²', 'lfdm', 'm³', 'Stk'].map(u => '<option value="' + u + '"' + (u === defUnit ? ' selected' : '') + '>' + u + '</option>').join('') + '</select></td>' +
+          '</tr>';
+      }).join('');
+      box.innerHTML = warn +
+        '<div style="max-height:260px;overflow:auto;border:1px solid var(--color-border);border-radius:8px;">' +
+        '<table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr style="text-align:left;color:var(--color-text-muted);font-size:10px;text-transform:uppercase;">' +
+        '<th style="padding:5px;">Nr</th><th style="padding:5px;">Raum</th><th style="padding:5px;">Maße</th><th style="padding:5px;">Menge</th><th style="padding:5px;">Einheit</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="row" style="margin-top:10px;gap:8px;"><button class="success small" onclick="_amPlanConfirm(\'' + (projId || '') + '\',\'' + (orderId || '') + '\')">✓ Räume ins Aufmaß / LV übernehmen</button>' +
+        '<span style="font-size:11px;color:var(--color-text-muted);">Je Raum entsteht eine LV-Position.</span></div>';
+    } catch (e) {
+      if (status) status.innerHTML = '<span style="color:#c0392b;">Netzwerkfehler — bitte erneut versuchen oder manuell erfassen.</span>';
+    }
+  };
+
+  window._amPlanConfirm = async function(projId, orderId) {
+    const box = document.getElementById('amPlanBox');
+    const rooms = window._amPlanRooms || [];
+    if (!rooms.length) return;
+    // Bearbeitete Werte aus den Feldern übernehmen
+    box.querySelectorAll('[data-pr]').forEach(el => {
+      const i = Number(el.dataset.i); const k = el.dataset.pr; if (!rooms[i]) return;
+      if (k === 'num') rooms[i]._num = el.value.trim();
+      else if (k === 'name') rooms[i]._name = el.value.trim();
+      else if (k === 'qty') rooms[i]._qty = Number(el.value) || 0;
+      else if (k === 'unit') rooms[i]._unit = el.value;
+    });
+    const proj = projId ? state.projects.find(p => p.id === projId) : null;
+    const order = proj ? (proj.orders || []).find(o => o.id === orderId) : null;
+    if (order && !Array.isArray(order.lvItems)) order.lvItems = [];
+    if (!Array.isArray(state.aufmasse)) state.aufmasse = [];
+    let added = 0;
+    rooms.forEach(rm => {
+      const qty = Number(rm._qty != null ? rm._qty : (rm.area || rm.perimeter || 0)) || 0;
+      const unit = rm._unit || (rm.area > 0 ? 'm²' : 'lfdm');
+      const nm = ((rm._num != null ? rm._num : (rm.number || '')) ? ('Raum ' + (rm._num != null ? rm._num : rm.number) + ' — ') : '') + (rm._name != null ? rm._name : (rm.name || 'Raum'));
+      if (qty <= 0) return;
+      if (order) {
+        order.lvItems.push({ id: uid('lv'), nr: 'AM' + (order.lvItems.length + 1), name: nm, qty, unit, price: 0, materialPct: null, materialAmount: null, aufmassFromPlan: true });
+      }
+      state.aufmasse.push({ id: uid('am'), projectId: projId, orderId, lvItemId: '', name: nm, formula: 'KI-Plan', qty, unit, price: 0,
+        room: { number: rm._num != null ? rm._num : rm.number, length: rm.length, width: rm.width, height: rm.height, area: rm.area, perimeter: rm.perimeter }, createdAt: Date.now() });
+      added++;
+    });
+    await saveState();
+    closeModal();
+    alert('✓ ' + added + ' Räume aus dem Plan übernommen' + (order ? ' und als LV-Positionen angelegt.' : '.'));
     if (projId && orderId && typeof openOrderDetail === 'function') openOrderDetail(projId, orderId, 'calc');
   };
 
@@ -56299,6 +56400,77 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     window._wfLastPartial = inv; // für Tests
     return inv;
   }
+})();
+</script>
+
+<!-- Host-Sonderangebote (Popup) + KI-Beratungs/Support-Chat in der App -->
+<script>
+(function () {
+  'use strict';
+  function scfg() { return (window.state && state.serverConfig) || {}; }
+  function hdr() { var c = scfg(); var h = { 'Content-Type': 'application/json' }; if (c.tenantKey) h['X-Tenant-Key'] = c.tenantKey; if (c.apiKey) h['Authorization'] = 'Bearer ' + c.apiKey; return h; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  // ---- Sonderangebot-Popup ---------------------------------------------------
+  var promoShown = false;
+  function checkPromo() {
+    var c = scfg(); if (!c.apiUrl || !c.apiKey || promoShown) return;
+    promoShown = true;
+    fetch(c.apiUrl + '/promo/active', { headers: hdr() }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.promo) return; showPromo(j.promo);
+    }).catch(function () {});
+  }
+  function promoEvent(id, kind) { var c = scfg(); fetch(c.apiUrl + '/promo/' + id + '/event', { method: 'POST', headers: hdr(), body: JSON.stringify({ kind: kind }) }).catch(function () {}); }
+  function showPromo(p) {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,34,54,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML = '<div style="background:#fff;border-radius:18px;max-width:400px;width:100%;padding:26px;box-shadow:0 30px 70px rgba(0,0,0,.4);text-align:center;font-family:inherit;">' +
+      (p.badge ? '<div style="display:inline-block;background:linear-gradient(135deg,#1e8449,#25a25a);color:#fff;font-weight:800;padding:5px 14px;border-radius:20px;font-size:14px;margin-bottom:12px;">' + esc(p.badge) + '</div>' : '') +
+      '<h2 style="margin:0 0 8px;font-size:21px;color:#0f2236;">' + esc(p.title) + '</h2>' +
+      '<p style="margin:0 0 18px;color:#4a5b6b;font-size:14px;line-height:1.5;">' + esc(p.body || '') + '</p>' +
+      '<button id="wfPromoCta" style="width:100%;border:none;background:#1e8449;color:#fff;font-weight:700;font-size:15px;padding:13px;border-radius:11px;cursor:pointer;">' + esc(p.ctaLabel || 'Ansehen') + '</button>' +
+      '<button id="wfPromoX" style="margin-top:9px;background:none;border:none;color:#8a97a5;font-size:13px;cursor:pointer;">Später</button></div>';
+    document.body.appendChild(ov);
+    document.getElementById('wfPromoX').onclick = function () { promoEvent(p.id, 'dismissed'); ov.remove(); };
+    document.getElementById('wfPromoCta').onclick = function () {
+      promoEvent(p.id, 'clicked');
+      if (p.ctaAction === 'url' && p.ctaTarget) window.open(p.ctaTarget, '_blank');
+      else if ((p.ctaAction === 'buy' || p.ctaAction === 'module')) {
+        if (typeof window.openSettings === 'function') { try { window.openSettings('billing'); } catch (e) {} }
+        else if (typeof window.showTab === 'function') { try { window.showTab('settings'); } catch (e) {} }
+      }
+      ov.remove();
+    };
+  }
+  var pt = setInterval(function () { if (scfg().apiUrl && scfg().apiKey) { clearInterval(pt); setTimeout(checkPromo, 1500); } }, 1500);
+  setTimeout(function () { clearInterval(pt); }, 60000);
+
+  // ---- In-App Hilfe/Beratungs-Chat (KI + Support) ---------------------------
+  if (document.getElementById('wfAppChatBtn')) return;
+  var btn = document.createElement('button');
+  btn.id = 'wfAppChatBtn'; btn.type = 'button'; btn.title = 'Hilfe & Beratung';
+  btn.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9997;width:52px;height:52px;border-radius:50%;border:none;background:#0f2236;color:#fff;font-size:23px;cursor:pointer;box-shadow:0 10px 26px rgba(0,0,0,.3);';
+  btn.innerHTML = '💬';
+  var panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;right:16px;bottom:78px;z-index:9998;width:min(340px,calc(100vw - 24px));max-height:70vh;display:none;flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 22px 55px rgba(0,0,0,.32);font-family:inherit;';
+  panel.innerHTML = '<div style="background:#0f2236;color:#fff;padding:12px 14px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;">Hilfe &amp; Beratung<button id="wfAppChatX" style="background:none;border:none;color:#9fb3c8;font-size:20px;cursor:pointer;">×</button></div>' +
+    '<div id="wfAppChatBody" style="flex:1;overflow-y:auto;padding:12px;background:#f6f8fb;display:flex;flex-direction:column;gap:8px;font-size:13.5px;"></div>' +
+    '<div style="display:flex;gap:6px;padding:8px;border-top:1px solid #e6ecf2;"><input id="wfAppChatIn" placeholder="Frage stellen…" style="flex:1;padding:9px;border:1px solid #cdd6df;border-radius:9px;font-size:13.5px;"><button id="wfAppChatSend" style="border:none;background:#1e8449;color:#fff;border-radius:9px;padding:0 13px;font-weight:700;cursor:pointer;">➤</button></div>';
+  document.body.appendChild(btn); document.body.appendChild(panel);
+  var cbody = panel.querySelector('#wfAppChatBody'); var cin = panel.querySelector('#wfAppChatIn'); var chist = []; var greeted = false;
+  function cadd(role, text) { var d = document.createElement('div'); d.style.cssText = 'max-width:86%;padding:8px 11px;border-radius:12px;line-height:1.4;white-space:pre-wrap;' + (role === 'user' ? 'background:#1e8449;color:#fff;align-self:flex-end;' : 'background:#fff;border:1px solid #e6ecf2;align-self:flex-start;'); d.textContent = text; cbody.appendChild(d); cbody.scrollTop = cbody.scrollHeight; return d; }
+  function csend() {
+    var t = (cin.value || '').trim(); if (!t) return; cin.value = ''; cadd('user', t); chist.push({ role: 'user', text: t });
+    var c = scfg(); var typing = cadd('assistant', '…');
+    fetch((c.apiUrl || '') + '/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: chist.slice(-12) }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { typing.textContent = j.reply || 'Dazu hilft dir unser Support gern weiter.'; chist.push({ role: 'assistant', text: typing.textContent }); })
+      .catch(function () { typing.textContent = 'Gerade nicht erreichbar. Bitte später erneut versuchen oder Support kontaktieren.'; });
+  }
+  panel.querySelector('#wfAppChatSend').onclick = csend;
+  cin.addEventListener('keydown', function (e) { if (e.key === 'Enter') csend(); });
+  panel.querySelector('#wfAppChatX').onclick = function () { panel.style.display = 'none'; };
+  btn.onclick = function () { var open = panel.style.display === 'flex'; panel.style.display = open ? 'none' : 'flex'; if (!open && !greeted) { greeted = true; cadd('assistant', 'Hallo! Ich helfe dir bei Fragen zu werkflow — Module, Funktionen oder wie etwas geht. Was brauchst du?'); } if (!open) cin.focus(); };
 })();
 </script>
 

@@ -114,11 +114,11 @@
       <div class="calc-card calc-out">
         <div class="calc-sub" id="calcCount">3 von 5 Modulen · bis 5 Mitarbeiter</div>
         <div class="calc-list"><span id="calcListLbl">Einzelpreise</span> <s id="calcList">52 €</s> <span class="calc-badge" id="calcBadge">−18 %</span></div>
-        <div class="calc-price"><span id="calcPrice">49</span> €<small> / Monat</small></div>
-        <div class="calc-save" id="calcSave">Du sparst 3 € / Monat mit dem Paket</div>
-        <div class="calc-year" id="calcYear">490 € / Jahr (2 Monate geschenkt)</div>
-        <a class="btn primary big" href="/app?action=buy" id="calcBuy" style="margin-top:16px;">🛒 Direkt kaufen</a>
-        <a class="btn navy" href="/app?action=buy" style="margin-top:8px;">🚀 Erst 14 Tage kostenlos testen</a>
+        <div class="calc-price"><span id="calcPrice">43</span> €<small> / Monat</small></div>
+        <div class="calc-save" id="calcSave">Du sparst 9 € / Monat mit dem Paket</div>
+        <div class="calc-year" id="calcYear">430 € / Jahr (2 Monate geschenkt)</div>
+        <a class="btn primary big" href="app.html?action=buy" id="calcBuy" style="margin-top:16px;">🛒 Direkt kaufen</a>
+        <a class="btn navy" href="index.html#demo" style="margin-top:8px;">🚀 Erst 14 Tage kostenlos testen</a>
         <p style="font-size:11.5px; color:var(--soft,#667); margin-top:10px;">Netto pro Betrieb · unbegrenzte Nutzer im Rahmen der Staffel · Zahlung per Karte oder SEPA · monatlich kündbar. Immer inklusive: Hosting in Deutschland, GoBD-Archiv, DSGVO-Export, tägliche Backups.</p>
       </div>
     </div>
@@ -291,9 +291,12 @@
     var yr = document.getElementById('calcYear');
     yr.textContent = n ? (price*10) + ' € / Jahr (2 Monate geschenkt)' : 'Mindestens 1 Modul wählen';
     yr.style.visibility = n ? 'visible' : 'hidden';
-    // Direktkauf-Link um Auswahl + Staffel anreichern (die App kann es später auslesen)
+    // Direktkauf-Link um Auswahl + Staffel anreichern (die App kann es später auslesen).
+    // Basis relativ zur aktuellen Seite bestimmen, damit der Link sowohl auf dem
+    // Server (/app) als auch im statischen Build (app.html) funktioniert.
     var buy = document.getElementById('calcBuy');
-    if (buy) buy.href = '/app?action=buy&modules=' + encodeURIComponent(sel.join(',')) + '&tier=' + tier;
+    var appBase = /\.html$/.test(location.pathname) ? 'app.html' : '/app';
+    if (buy) buy.href = appBase + '?action=buy&modules=' + encodeURIComponent(sel.join(',')) + '&tier=' + tier;
   }
   pick.addEventListener('change', update);
   staffel.querySelectorAll('button').forEach(function(btn){
