@@ -30,4 +30,9 @@
     t.style.transitionDelay = ((idx % 6) * 55) + 'ms';
     io.observe(t);
   });
+  // Sicherheitsnetz: falls ein Element nie den Schwellenwert kreuzt (sehr großes
+  // Fenster, Layout-Sonderfall), nach kurzer Zeit trotzdem sichtbar machen.
+  setTimeout(function () {
+    for (var k = 0; k < targets.length; k++) if (!targets[k].classList.contains('in')) targets[k].classList.add('in');
+  }, 2600);
 })();
