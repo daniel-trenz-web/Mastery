@@ -50704,28 +50704,35 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     ov.innerHTML =
       '<div style="max-width:640px;width:100%;background:#fff;border-radius:18px;padding:26px 26px 22px;box-shadow:0 30px 80px rgba(0,0,0,.4);">' +
       '<div style="font-size:34px;line-height:1;">🚀</div>' +
-      '<h2 style="margin:10px 0 4px;font-size:22px;">Womit möchtest du starten?</h2>' +
-      '<p style="color:#667;font-size:14px;margin-bottom:18px;">Du kannst werkflow mit Beispieldaten ausprobieren oder direkt mit deinen eigenen Daten loslegen. Beides lässt sich jederzeit ändern.</p>' +
+      '<h2 style="margin:10px 0 4px;font-size:22px;">In 1 Minute einsatzbereit — wie möchtest du starten?</h2>' +
+      '<p style="color:#667;font-size:14px;margin-bottom:18px;">Am schnellsten: lade deine Unterlagen hoch, die KI richtet alles ein. Oder erkunde mit Beispieldaten bzw. starte leer.</p>' +
+      (saas ? '<button id="demoKi" style="width:100%;text-align:left;border:2px solid #1f6feb;border-radius:14px;padding:18px;background:rgba(31,111,235,.06);cursor:pointer;margin-bottom:12px;position:relative;">' +
+        '<span style="position:absolute;top:-11px;left:16px;background:#1f6feb;color:#fff;font-size:11px;font-weight:800;padding:2px 10px;border-radius:999px;">EMPFOHLEN · am schnellsten</span>' +
+        '<div style="font-size:24px;">🪄</div><div style="font-weight:800;margin-top:6px;font-size:16px;">Mit meinen Unterlagen einrichten (KI)</div>' +
+        '<div style="color:#667;font-size:12.5px;margin-top:5px;">Gewerbeanmeldung, Logo, Leistungsverzeichnisse &amp; Preislisten hochladen — die KI trägt Firmendaten, Logo, LVs und Materiallisten automatisch ein. Danach nur noch kurz bestätigen.</div></button>' : '') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;" id="demoChoiceGrid">' +
-        '<button id="demoOwn" style="text-align:left;border:1.5px solid #d7e2ee;border-radius:14px;padding:18px;background:#fff;cursor:pointer;">' +
-          '<div style="font-size:24px;">📝</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Mit eigenen Daten</div>' +
-          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Leerer Betrieb — du legst deine echten Projekte, Kunden und Mitarbeiter an.' +
-            (saas ? ' <b>Alles bleibt nach der Testphase erhalten</b> — nach dem Kauf arbeitest du im selben Betrieb weiter, ohne Datenverlust.' : '') + '</div>' +
-        '</button>' +
         '<button id="demoExample" style="text-align:left;border:1.5px solid #17924e;border-radius:14px;padding:18px;background:rgba(23,146,78,.06);cursor:pointer;">' +
-          '<div style="font-size:24px;">🧪</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Mit Beispieldaten</div>' +
-          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Fertige Projekte, Kunden &amp; Mitarbeiter zum Erkunden. Du kannst sie später mit einem Klick löschen.</div>' +
+          '<div style="font-size:24px;">🧪</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Mit Beispieldaten erkunden</div>' +
+          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Fertige Projekte, Kunden &amp; Mitarbeiter zum Anschauen. Später mit einem Klick löschbar.</div>' +
+        '</button>' +
+        '<button id="demoOwn" style="text-align:left;border:1.5px solid #d7e2ee;border-radius:14px;padding:18px;background:#fff;cursor:pointer;">' +
+          '<div style="font-size:24px;">📝</div><div style="font-weight:800;margin-top:8px;font-size:15.5px;">Leer starten (manuell)</div>' +
+          '<div style="color:#667;font-size:12.5px;margin-top:5px;">Du legst alles selbst an.' +
+            (saas ? ' <b>Deine Daten bleiben nach der Testphase erhalten.</b>' : '') + '</div>' +
         '</button>' +
       '</div>' +
-      (saas ? '<button id="demoKi" style="width:100%;margin-top:12px;text-align:left;border:1.5px solid #1f6feb;border-radius:14px;padding:16px;background:rgba(31,111,235,.05);cursor:pointer;">' +
-        '<div style="font-size:22px;">🪄</div><div style="font-weight:800;margin-top:6px;font-size:15px;">Mit meinen Unterlagen einrichten (KI)</div>' +
-        '<div style="color:#667;font-size:12.5px;margin-top:5px;">Lade Gewerbeanmeldung, Logo, Leistungsverzeichnisse &amp; Preislisten hoch — die KI baut alles automatisch ein.</div></button>' : '') +
       '<div style="margin-top:14px;font-size:11.5px;color:#8a97a6;text-align:center;">Deine Wahl kannst du in den Einstellungen jederzeit revidieren.</div>' +
       '</div>';
     document.body.appendChild(ov);
-    function finish() { ov.remove(); if (typeof saveState === 'function') saveState(); if (typeof render === 'function') { try { render(); } catch (e) {} } cb(); }
+    // finishNoCb: Overlay schließen + speichern, aber den Folgeschritt (cb) selbst steuern.
+    function finishNoCb() { ov.remove(); if (typeof saveState === 'function') saveState(); if (typeof render === 'function') { try { render(); } catch (e) {} } }
+    function finish() { finishNoCb(); cb(); }
     var kiBtn = ov.querySelector('#demoKi');
-    if (kiBtn) kiBtn.onclick = function () { state.demoDataChoice = 'own'; finish(); setTimeout(function () { if (typeof openSetupAssistant === 'function') openSetupAssistant(); }, 300); };
+    if (kiBtn) kiBtn.onclick = function () {
+      state.demoDataChoice = 'own'; finishNoCb();
+      // KI-Assistent öffnen; danach das (jetzt vorbefüllte) Onboarding zum Prüfen.
+      setTimeout(function () { if (typeof openSetupAssistant === 'function') openSetupAssistant({ onDone: cb }); else cb(); }, 250);
+    };
     ov.querySelector('#demoOwn').onclick = function () { state.demoDataChoice = 'own'; finish(); };
     ov.querySelector('#demoExample').onclick = function () {
       try { loadExampleData(); } catch (e) {}
@@ -50757,8 +50764,10 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
     return '';
   }
   window._setupDocs = [];
-  window.openSetupAssistant = function () {
+  window.openSetupAssistant = function (opts) {
     if (!_srvReady()) { alert('Der KI-Einrichtungs-Assistent ist nur im werkflow-Server-Betrieb verfügbar (nach Login).'); return; }
+    var onDone = opts && opts.onDone; var _doneCalled = false;
+    function _finishAssistant() { if (_doneCalled) return; _doneCalled = true; if (typeof onDone === 'function') { try { onDone(); } catch (e) {} } }
     window._setupDocs = [];
     var ov = document.createElement('div');
     ov.id = 'setupAssistOverlay';
@@ -50841,7 +50850,11 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
       if (typeof render === 'function') { try { render(); } catch (e) {} }
       var msg = '✓ Übernommen: ' + applied.join(', ');
       if (typeof mToast === 'function') mToast(msg); else alert(msg);
+      _finishAssistant();
     };
+    // Schließen (✕) — überschreibt das Inline-Handler, damit der Folgeschritt läuft.
+    var closeBtn = ov.querySelector('button.secondary.small');
+    if (closeBtn) closeBtn.onclick = function () { ov.remove(); _finishAssistant(); };
   };
   // Erkannte Daten ins System einbauen. Gibt eine Liste der übernommenen Bereiche zurück.
   function applySetupDocs(docs) {
@@ -51093,9 +51106,29 @@ Müller GmbH,Hr. Müller,Hauptstr. 1,50667,Köln,0221 1234,info@mueller.de,DE123
   }
 
   function _obStep1() {
+    // Ist die KI-Einrichtung schon gelaufen? Dann nur noch prüfen statt eingeben.
+    const bl = state.betriebsleiter || {};
+    const prefilled = !!(bl.name || bl.address || bl.addrLine1 || bl.ustId || bl.iban || bl.logo);
+    if (prefilled) {
+      return `
+        <h3>✅ Fast fertig — bitte kurz prüfen</h3>
+        <p class="hint">Wir haben deine Daten aus den hochgeladenen Unterlagen bereits eingetragen. Geh in den nächsten Schritten einmal durch und bestätige — anpassen kannst du alles.</p>
+        <div style="background:var(--color-primary-soft); padding:14px; border-radius:8px; margin:14px 0;">
+          <strong style="color:var(--color-primary);">Übernommen:</strong>
+          <ul style="margin:8px 0 0 20px; color:var(--color-text); font-size:13px; line-height:1.7;">
+            ${bl.name ? '<li>📋 Firmenname &amp; Kontakt</li>' : ''}
+            ${(bl.address || bl.addrLine1) ? '<li>📍 Adresse</li>' : ''}
+            ${bl.ustId ? '<li>🧾 USt-IdNr.</li>' : ''}
+            ${bl.iban ? '<li>🏦 Bankverbindung</li>' : ''}
+            ${bl.logo ? '<li>🖼 Logo</li>' : ''}
+          </ul>
+        </div>
+        <p class="hint" style="font-size:11px;">Nichts hochgeladen? Mit „Überspringen" geht’s auch direkt in die App — Felder füllst du später einfach beim ersten Angebot/Rechnung.</p>
+      `;
+    }
     return `
       <h3>👋 Willkommen bei werkflow!</h3>
-      <p class="hint">In wenigen Schritten ist Dein System einsatzbereit. Du kannst diesen Assistenten jederzeit über <strong>Einstellungen → 🪄 Onboarding</strong> wiederholen oder mit „Überspringen" abbrechen.</p>
+      <p class="hint">In wenigen Schritten ist Dein System einsatzbereit — oder <strong>direkt „Überspringen"</strong> und später beim ersten Angebot/Rechnung ausfüllen. Tipp: Über <strong>🪄 KI-Einrichtung</strong> (Einstellungen) trägt die KI alles aus deinen Unterlagen automatisch ein.</p>
       <div style="background:var(--color-primary-soft); padding:14px; border-radius:8px; margin:14px 0;">
         <strong style="color:var(--color-primary);">💡 In den nächsten Minuten richten wir ein:</strong>
         <ul style="margin:8px 0 0 20px; color:var(--color-text); font-size:13px; line-height:1.7;">
