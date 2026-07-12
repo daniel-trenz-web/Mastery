@@ -1,5 +1,45 @@
 # WERKOS — Produktions-Deployment (IONOS, Hetzner & Co.)
 
+## 0. „Live testen" über Tailscale (schnellster Weg, ohne Domain)
+
+Für interne Tests: **das System (App + API + Admin) läuft auf dem VPS und ist
+nur über euer Tailscale-Netz erreichbar** — kein öffentliches DNS, keine offenen
+Ports, automatisches HTTPS. Die Marketing-**Website** bleibt getrennt (statisch,
+z. B. GitHub Pages) und wird von den Marketing-Routen des Systems angesteuert.
+
+**Einmalig — Tailscale-Auth-Key holen:** Tailscale Admin-Konsole →
+*Settings → Keys → Generate auth key* (Reusable empfohlen).
+
+**Auf dem VPS** (Docker + Compose v2 vorausgesetzt):
+
+```bash
+git clone https://github.com/daniel-trenz-web/Mastery.git /opt/werkflow
+cd /opt/werkflow/deploy
+cp .env.example .env
+#  in .env mindestens setzen:
+#    TS_AUTHKEY=tskey-auth-…            (Tailscale Auth-Key)
+#    WERKOS_SECRET=$(openssl rand -base64 48)
+#    WERKOS_ADMIN_TOKEN=$(openssl rand -hex 24)   (= dein Admin-Login)
+#    WERKOS_AI_KEY=sk-ant-…            (optional: schaltet KI-Chatbot & KI-Aufmaß scharf)
+./tailscale-up.sh
+```
+
+Danach ist das System **nur für Geräte in eurem Tailnet** erreichbar unter:
+
+- **App / Demozugang:** `https://werkflow-system.<euer-tailnet>.ts.net/app`
+- **Admin-Zentrale:** `https://werkflow-system.<euer-tailnet>.ts.net/admin`
+  (Login mit dem `WERKOS_ADMIN_TOKEN` aus der `.env`)
+
+Der Demozugang funktioniert wie auf der Website: E-Mail eingeben → es wird
+sofort ein 14-Tage-Testbetrieb mit Zugangsdaten angelegt. Trennung von der
+Website steuert `WERKOS_SYSTEM_ONLY=true` + `WERKOS_MARKETING_URL` (die
+`/`, `/preise`, … leiten dann auf die öffentliche Website um).
+
+> Compose-Datei: `deploy/docker-compose.tailscale.yml` · Sidecar-Config:
+> `deploy/tailscale/serve.json`. Stoppen: `docker compose -f docker-compose.tailscale.yml down`.
+
+---
+
 ## 1. Voraussetzungen
 
 - Ein **VPS/Cloud-Server** mit Ubuntu 22.04/24.04 oder Debian 12 und Root-SSH
