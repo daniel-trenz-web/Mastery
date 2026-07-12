@@ -1,0 +1,72 @@
+# werkflow — „Live testen"-Setup: das SYSTEM (App + API + Admin) läuft auf dem
+# VPS und ist NUR über euer Tailscale-Netz (Tailnet) erreichbar — kein
+# öffentliches DNS, keine offenen Ports nötig. Die Marketing-WEBSITE bleibt davon
+# getrennt (statisch, z. B. GitHub Pages / IONOS).
+#
+# Start auf dem VPS:
+#   cp .env.example .env   →   TS_AUTHKEY, WERKOS_SECRET, WERKOS_ADMIN_TOKEN setzen
+#   ./tailscale-up.sh      (oder: docker compose -f docker-compose.tailscale.yml up -d --build)
+# Danach erreichbar unter:  https://<hostname>.<dein-tailnet>.ts.net
+services:
+  # Tailscale-Sidecar: verbindet den VPS mit eurem Tailnet und stellt das System
+  # per „tailscale serve" als HTTPS bereit (automatische Zertifikate, MagicDNS).
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: ${TS_HOSTNAME:-werkflow-system}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:?TS_AUTHKEY setzen (Tailscale Admin → Settings → Keys → Auth key)}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_EXTRA_ARGS=${TS_EXTRA_ARGS:-}
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale/serve.json:/config/serve.json:ro
+    cap_add:
+      - net_admin
+    restart: unless-stopped
+
+  # Das eigentliche System (zero-dependency Node-Server). Teilt sich den
+  # Netzwerk-Stack mit dem Sidecar, damit „tailscale serve" auf 127.0.0.1:4000
+  # proxyen kann. System-only: Marketing-Routen zeigen auf die Website.
+  werkos:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    network_mode: service:tailscale
+    depends_on: [tailscale]
+    restart: unless-stopped
+    environment:
+      - WERKOS_SYSTEM_ONLY=true
+      - WERKOS_MARKETING_URL=${WERKOS_MARKETING_URL:-https://daniel-trenz-web.github.io/Mastery}
+      - WERKOS_SECRET=${WERKOS_SECRET:?WERKOS_SECRET setzen (z. B. openssl rand -base64 48)}
+      - WERKOS_ADMIN_TOKEN=${WERKOS_ADMIN_TOKEN:?WERKOS_ADMIN_TOKEN setzen (Admin-Zugang)}
+      - WERKOS_BASE_URL=${WERKOS_BASE_URL:-}
+      - WERKOS_AI_KEY=${WERKOS_AI_KEY:-}
+      - WERKOS_SMTP_HOST=${WERKOS_SMTP_HOST:-}
+      - WERKOS_SMTP_PORT=${WERKOS_SMTP_PORT:-587}
+      - WERKOS_SMTP_USER=${WERKOS_SMTP_USER:-}
+      - WERKOS_SMTP_PASS=${WERKOS_SMTP_PASS:-}
+      - WERKOS_SMTP_FROM=${WERKOS_SMTP_FROM:-}
+      - WERKOS_STRIPE_SECRET=${WERKOS_STRIPE_SECRET:-}
+      - WERKOS_STRIPE_WEBHOOK_SECRET=${WERKOS_STRIPE_WEBHOOK_SECRET:-}
+    volumes:
+      - werkos-data:/data
+
+  # Tägliche SQLite-Sicherung (GoBD-Datensicherung), 30 Tage rollierend.
+  backup:
+    image: alpine:3
+    restart: unless-stopped
+    volumes:
+      - werkos-data:/data:ro
+      - ./backups:/backups
+    command: >
+      sh -c 'while true; do
+        ts=$$(date +%Y%m%d-%H%M%S);
+        cp /data/werkos.sqlite /backups/werkos-$$ts.sqlite 2>/dev/null;
+        ls -t /backups/werkos-*.sqlite 2>/dev/null | tail -n +31 | xargs -r rm;
+        sleep 86400;
+      done'
+
+volumes:
+  werkos-data:
+  tailscale-state:

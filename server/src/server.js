@@ -27,7 +27,20 @@ function securityHeaders(res) {
   // HSTS setzt Caddy in Produktion (nur über HTTPS sinnvoll)
 }
 
+// Marketing-Seiten, die im „System-only"-Modus NICHT vom System-Server kommen.
+const MARKETING_ROUTES = new Set(['/', '/funktionen', '/preise', '/faq', '/impressum', '/datenschutz']);
+
 function serveStatic(req, res, pathname) {
+  // System vom Marketing trennen: nur App/API/Admin ausliefern, Website extern.
+  if (cfg.SYSTEM_ONLY && MARKETING_ROUTES.has(pathname)) {
+    if (cfg.MARKETING_URL) {
+      const target = cfg.MARKETING_URL + (pathname === '/' ? '/' : pathname);
+      res.writeHead(302, { Location: target });
+      return res.end();
+    }
+    // Keine Marketing-URL gesetzt → Systemwurzel zeigt direkt die App.
+    pathname = '/app.html';
+  }
   if (pathname === '/') pathname = '/home.html';                    // Marketing-Website
   else if (pathname === '/app' || pathname === '/app/') pathname = '/app.html'; // die PWA
   else if (pathname === '/angebot') pathname = '/offer.html';       // öffentliche Angebotsseite

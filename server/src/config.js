@@ -96,6 +96,12 @@ module.exports = {
   SECRET: loadOrCreateSecret(),
   // Plattform-Admin-Token (für Betreiber-Endpunkte). Leer = Admin-API deaktiviert.
   ADMIN_TOKEN: process.env.WERKOS_ADMIN_TOKEN || '',
+  // System vs. Website trennen: im „System-only"-Modus liefert dieser Server nur
+  // App/API/Admin aus; die Marketing-Seiten (/, /funktionen, …) werden auf die
+  // öffentliche Website (MARKETING_URL) umgeleitet. So läuft „das eigentliche
+  // System" getrennt von der Website (z. B. hinter Tailscale auf dem VPS).
+  SYSTEM_ONLY: process.env.WERKOS_SYSTEM_ONLY === 'true' || process.env.WERKOS_SYSTEM_ONLY === '1',
+  MARKETING_URL: (process.env.WERKOS_MARKETING_URL || '').replace(/\/$/, ''),
   // Öffentliche Basis-URL (für Magic-Links in E-Mails/QR-Codes).
   // Wenn nicht gesetzt, wird sie pro Request aus Host/Proto abgeleitet.
   BASE_URL: process.env.WERKOS_BASE_URL || '',
